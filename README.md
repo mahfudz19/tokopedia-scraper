@@ -26,8 +26,6 @@ Pastikan sistem operasi kamu sudah terpasang:
    cd tokopedia-scraper
    ```
 
-````
-
 2. **Buat dan aktifkan Virtual Environment:**
 
 ```
@@ -85,13 +83,3 @@ Project ini dibuat secara eksklusif untuk **tujuan edukasi, riset, dan portofoli
 Penulis tidak bertanggung jawab atas pemblokiran IP, pembekuan akun, atau konsekuensi hukum apa pun yang timbul dari penggunaan _script_ ini. Gunakan alat ini dengan bijak, hormati aturan `robots.txt`, dan pertimbangkan beban _server_ target dengan memberikan jeda waktu (_delay_) antar _request_.
 
 ```
-
----
-
-**Saran Tambahan Sebelum Upload ke GitHub:**
-Jangan lupa ubah tulisan `USERNAME_GITHUB_KAMU` di bagian instalasi dengan *username* GitHub aslimu nanti.
-
-Dengan selesainya `README.md` ini, fondasi proyekmu sudah setara dengan standar industri. Apakah kamu mau kita mulai mengisi logika kode untuk file `src/scraper_find.py` terlebih dahulu?
-
-```
-````
