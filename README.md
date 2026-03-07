@@ -27,35 +27,26 @@ Pastikan sistem operasi kamu sudah terpasang:
    ```
 
 2. **Buat dan aktifkan Virtual Environment:**
-
-```
-python -m venv venv
-source venv/bin/activate  # Untuk macOS/Linux
-
-```
+   ```
+   python -m venv venv
+   source venv/bin/activate  # Untuk macOS/Linux
+   ```
 
 3. **Install Dependencies:**
-
-```
-pip install -r requirements.txt
-
-```
+   ```
+   pip install -r requirements.txt
+   ```
 
 4. **Install Browser Playwright:**
    Untuk memastikan Playwright berjalan dengan baik, unduh _binary_ Chromium:
-
-```
-playwright install chromium
-
-```
+   ```
+   playwright install chromium
+   ```
 
 ## 💻 Cara Penggunaan
-
 Setelah instalasi selesai, kamu bisa langsung menjalankan _entry point_ aplikasi melalui terminal:
-
 ```
 python main.py
-
 ```
 
 _(Catatan: Kamu dapat memodifikasi kata kunci pencarian atau memilih metode scraping di dalam file `main.py`)_
@@ -73,7 +64,6 @@ tokopedia-scraper/
 ├── main.py           # Entry point untuk menjalankan script
 ├── requirements.txt  # Daftar library Python yang dibutuhkan
 └── .gitignore
-
 ```
 
 ## ⚠️ Disclaimer Hukum & Etika
@@ -81,5 +71,3 @@ tokopedia-scraper/
 Project ini dibuat secara eksklusif untuk **tujuan edukasi, riset, dan portofolio**. Melakukan _web scraping_ terhadap platform e-commerce komersial berpotensi melanggar _Terms of Service_ (ToS) dari platform tersebut.
 
 Penulis tidak bertanggung jawab atas pemblokiran IP, pembekuan akun, atau konsekuensi hukum apa pun yang timbul dari penggunaan _script_ ini. Gunakan alat ini dengan bijak, hormati aturan `robots.txt`, dan pertimbangkan beban _server_ target dengan memberikan jeda waktu (_delay_) antar _request_.
-
-```
