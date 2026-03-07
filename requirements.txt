@@ -1,1 +1,4 @@
-pip freeze > requirements.txt
+greenlet==3.3.2
+playwright==1.58.0
+pyee==13.0.1
+typing_extensions==4.15.0
