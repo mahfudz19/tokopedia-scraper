@@ -1,0 +1,19 @@
+# Environments
+venv/
+env/
+.env
+
+# Cache & Compiled files
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Playwright
+.playwright/
+
+# Data hasil scraping (opsional, tergantung apakah kamu mau share datanya atau tidak)
+data/*.csv
+data/*.json
+
+# macOS OS files
+.DS_Store
