@@ -11,23 +11,22 @@ async def extract_pagination_info(pagination_locator):
     Fungsi untuk mengekstrak nomor halaman yang sedang aktif
     dan mengecek apakah ada halaman selanjutnya.
     """
-    active_page_number = "1"  # Set default ke halaman 1
+    active_page_number = "1"  # Default adalah halaman 1
     next_url = None
 
-    # --- LOGIKA BARU: FAST-FAIL ---
-    # Jika elemen paginasi tidak ada di DOM, langsung kembalikan default
-    if not await pagination_locator.is_visible():
-        print(
-            "[*] Paginasi tidak ditemukan. Mengasumsikan hasil pencarian hanya 1 halaman."
-        )
-        return active_page_number, next_url
-
     try:
+        # CEK DULU: Apakah elemen paginasi ada di dalam DOM?
+        if await pagination_locator.count() == 0:
+            print("[*] Tidak ada paginasi. Ini adalah satu-satunya halaman.")
+            return active_page_number, next_url
+
         # Ekstrak halaman aktif
         active_page_locator = pagination_locator.locator(
             "a[data-active='true'], span[data-active='true']"
         )
-        active_page_number = await active_page_locator.inner_text()
+
+        # Tambahkan timeout 3 detik agar tidak menunggu 30 detik jika ada error minor
+        active_page_number = await active_page_locator.inner_text(timeout=3000)
         print(
             f"[*] Halaman yang saat ini aktif/terlihat adalah Halaman: {active_page_number}"
         )

@@ -24,36 +24,40 @@ async def save_page_as_mhtml(page, keyword, page_number):
 async def scroll_to_element(page, element_selector, max_attempts=30):
     """
     Melakukan scroll ke bawah secara bertahap sampai selector yang dituju terlihat.
-    Berhenti otomatis jika sudah mentok di dasar halaman.
+    Dilengkapi deteksi 'mentok bawah' untuk halaman yang hanya memiliki 1 page.
     """
     print(f"\n[*] Memulai auto-scroll mencari: {element_selector}")
     target_locator = page.locator(element_selector)
     attempts = 0
+
+    # Mencatat tinggi halaman awal
+    last_scroll_height = await page.evaluate("document.body.scrollHeight")
 
     while attempts < max_attempts:
         if await target_locator.is_visible():
             print("✓ Elemen target ditemukan di layar!")
             break
 
-        # --- LOGIKA BARU: DETEKSI DASAR HALAMAN ---
-        # Mengecek apakah scroll sudah mentok di dasar halaman
-        is_at_bottom = await page.evaluate(
-            """() => {
-            return (window.innerHeight + window.scrollY) >= document.body.offsetHeight;
-        }"""
-        )
-
-        if is_at_bottom:
-            print("[-] Scroll sudah mentok di dasar halaman. Berhenti scrolling.")
-            break
-
         tinggi_layar = await page.evaluate("window.innerHeight")
         jarak_scroll = tinggi_layar - 100
         await page.mouse.wheel(0, jarak_scroll)
-        await page.wait_for_timeout(1000)
+
+        # Jeda 1.5 detik untuk memastikan skeleton loading selesai
+        await page.wait_for_timeout(3000)
+
+        # Mengecek apakah tinggi halaman bertambah setelah di-scroll
+        new_scroll_height = await page.evaluate("document.body.scrollHeight")
+
+        if new_scroll_height == last_scroll_height:
+            print(
+                "[i] Mentok di bawah halaman. Asumsi: Produk habis (Hanya 1 halaman)."
+            )
+            break
+
+        last_scroll_height = new_scroll_height
         attempts += 1
 
     if attempts == max_attempts:
-        print("[!] Peringatan: Berhenti karena mencapai batas maksimal scroll.")
+        print("[!] Peringatan: Berhenti setelah batas maksimal scroll mencapai batas.")
 
     return target_locator
