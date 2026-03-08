@@ -1,73 +1,81 @@
-# Tokopedia Scraper (Playwright) 🕷️📦
+Pembaruan dokumentasi adalah langkah esensial! Sebuah repositori tanpa `README.md` yang merefleksikan pembaruan terkini akan sangat membingungkan developer lain.
 
-Project Python ini dibuat untuk mengekstrak data produk (seperti nama dan harga) dari Tokopedia menggunakan **Playwright**. Project ini dikembangkan dengan arsitektur modular dan mendukung dua metode scraping utama: melalui rute `/find/{keyword}` (lebih stabil dan sesuai ToS) dan rute `/search` (eksperimental).
+Mengingat hasil ekstraksi dari repositori ini akan digunakan sebagai fondasi _dataset_ untuk pengembangan _Machine Learning_, tim pengolah data di proyek ini membutuhkan 4 informasi krusial:
 
-Sangat cocok digunakan untuk mengumpulkan _dataset_ awal guna keperluan riset data atau _Machine Learning_.
+1. **Format dan Lokasi Output Data:** Tim harus tahu bahwa _scraper_ ini menghasilkan dua file sekaligus di folder `data/` (JSON untuk disuapkan ke algoritma ML, dan MHTML untuk _backup_ visual jika terjadi anomali data).
+2. **Perbedaan Metode Scrape:** Tim perlu tahu mengapa ada `/find` (stabil untuk produksi dataset) dan `/search` (eksperimental).
+3. **Cara Penggunaan CLI (Command Line):** Karena skrip sudah menggunakan `argparse`, tim harus tahu argumen _flag_ apa saja yang tersedia (`-k`, `-f`, `-m`).
+4. **Kelebihan dan Kekurangannya:** Agar tim tahu batasan alat ini, misalnya kerentanan terhadap CAPTCHA atau perubahan elemen DOM oleh Tokopedia.
 
-## ✨ Fitur Utama
+Berikut adalah draf pembaruan `README.md` yang merangkum semua poin di atas dengan padat, profesional, dan relevan dengan alur kerja pengumpulan data:
 
-- **Dual Scraping Method:** Menyediakan opsi _scraping_ melalui halaman pencarian organik maupun halaman direktori/SEO.
-- **Apple Silicon Optimized:** Berjalan sangat mulus di arsitektur Mac M1/M2 menggunakan _browser_ Chromium bawaan Playwright.
-- **Anti-Bot & Error Handling:** Dilengkapi penanganan otomatis untuk halaman _error_ 404 ("Waduh, tujuanmu nggak ada!") dan menggunakan rotasi _User-Agent_ dasar.
-- **Modular Codebase:** Kode dipisah dengan rapi (`main.py` terpisah dari modul fungsional di folder `src/`) sehingga mudah dikembangkan lebih lanjut.
+````markdown
+# Tokopedia Scraper (Playwright & Stealth) 🕷️📦
 
-## 🚀 Prasyarat Sistem
+Alat ekstraksi data (Web Scraper) otomatis menggunakan **Python Playwright**. Dirancang khusus dengan arsitektur modular dan CLI (Command Line Interface) untuk mengumpulkan _dataset_ harga dan informasi produk dari Tokopedia. Sangat cocok digunakan sebagai _pipeline_ awal untuk kebutuhan riset data dan _Machine Learning_.
 
-Pastikan sistem operasi kamu sudah terpasang:
+## 🚀 Kelebihan
 
-- Python 3.10 atau lebih baru (Sangat direkomendasikan menggunakan `pyenv`)
-- Git
+- **Anti-CSS Randomization:** Menggunakan evaluasi JavaScript internal pada atribut `data-testid` sehingga kebal terhadap pengacakan nama _class_ CSS dari sisi _front-end_ Tokopedia.
+- **Dual Output System:** Setiap halaman yang berhasil diproses akan menghasilkan file **JSON** (dataset bersih siap olah) dan **MHTML** (_snapshot_ visual halaman utuh yang bisa dibuka secara _offline_).
+- **Stealth Mode:** Terintegrasi dengan `playwright-stealth` untuk menyamarkan _browser_ dari sistem deteksi bot.
+- **Dynamic Scrolling:** Mendeteksi tinggi monitor dan melakukan _infinite scroll_ secara dinamis hingga elemen paginasi ditemukan.
+
+## ⚠️ Kekurangan & Limitasi
+
+- **Kecepatan:** Karena menggunakan metode _browser automation_ dengan jeda waktu (_delay_) yang menyerupai manusia untuk menghindari pemblokiran IP, proses _scraping_ tidak secepat mengakses API langsung.
+- **Metode /search Rawan Blokir:** Tokopedia memiliki proteksi CAPTCHA dan _firewall_ (seperti Cloudflare) yang sangat agresif pada rute utama pencarian organik (`/search`).
+- **Ketergantungan DOM:** Jika pihak platform mengubah struktur atribut `data-testid` secara masif, fungsi ekstraksi JavaScript perlu disesuaikan kembali.
 
 ## 🛠️ Instalasi & Persiapan
 
-1. **Clone repositori ini:**
-   ```
+1. **Clone repositori dan siapkan Virtual Environment:**
+   ```bash
    git clone [https://github.com/USERNAME_GITHUB_KAMU/tokopedia-scraper.git](https://github.com/USERNAME_GITHUB_KAMU/tokopedia-scraper.git)
    cd tokopedia-scraper
-   ```
-
-2. **Buat dan aktifkan Virtual Environment:**
-   ```
    python -m venv venv
-   source venv/bin/activate  # Untuk macOS/Linux
+   source venv/bin/activate
    ```
+````
 
-3. **Install Dependencies:**
-   ```
+2. **Install Dependencies & Browser Playwright:**
+   ```bash
    pip install -r requirements.txt
-   ```
-
-4. **Install Browser Playwright:**
-   Untuk memastikan Playwright berjalan dengan baik, unduh _binary_ Chromium:
-   ```
    playwright install chromium
    ```
 
-## 💻 Cara Penggunaan
-Setelah instalasi selesai, kamu bisa langsung menjalankan _entry point_ aplikasi melalui terminal:
-```
-python main.py
-```
+## 💻 Cara Penggunaan (CLI)
 
-_(Catatan: Kamu dapat memodifikasi kata kunci pencarian atau memilih metode scraping di dalam file `main.py`)_
+Program ini menggunakan Argparse dan berjalan sepenuhnya melalui terminal.
 
-## 📂 Struktur Direktori
+**Opsi Argumen:**
 
-```text
-tokopedia-scraper/
-├── data/             # Direktori penyimpanan data hasil scraping (CSV/JSON)
-├── src/              # Modul utama aplikasi
-│   ├── __init__.py
-│   ├── scraper_find.py
-│   ├── scraper_search.py
-│   └── utils.py
-├── main.py           # Entry point untuk menjalankan script
-├── requirements.txt  # Daftar library Python yang dibutuhkan
-└── .gitignore
-```
+- `-k` atau `--keyword` : Untuk mencari satu produk spesifik.
+- `-f` atau `--file` : Untuk membaca daftar produk dari file teks (Batch Mode). Default: `keywords.txt`.
+- `-m` atau `--method` : Memilih rute scraper (`find` atau `search`). Default: `find`.
 
-## ⚠️ Disclaimer Hukum & Etika
+**Contoh Eksekusi:**
 
-Project ini dibuat secara eksklusif untuk **tujuan edukasi, riset, dan portofolio**. Melakukan _web scraping_ terhadap platform e-commerce komersial berpotensi melanggar _Terms of Service_ (ToS) dari platform tersebut.
+1. **Menjalankan Satu Keyword (Metode Default /find):**
 
-Penulis tidak bertanggung jawab atas pemblokiran IP, pembekuan akun, atau konsekuensi hukum apa pun yang timbul dari penggunaan _script_ ini. Gunakan alat ini dengan bijak, hormati aturan `robots.txt`, dan pertimbangkan beban _server_ target dengan memberikan jeda waktu (_delay_) antar _request_.
+   ```bash
+   python main.py -k "tenda camping"
+   ```
+
+2. **Menjalankan Batch Mode (Membaca file `keywords.txt`):**
+
+   ```bash
+   python main.py -f keywords.txt
+   ```
+
+3. **Eksperimen dengan Metode /search:**
+   ```bash
+   python main.py -k "helm full face" -m search
+   ```
+
+## 📂 Output Data
+
+Semua hasil ekstraksi akan disimpan di dalam direktori `data/` dengan penamaan otomatis berdasakan _keyword_ dan nomor halaman.
+
+- `tokopedia_[keyword]_page_[no].json` -> Struktur data mentah.
+- `tokopedia_[keyword]_page_[no].mhtml` -> Visual _web page single-file_.
