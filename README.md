@@ -9,7 +9,6 @@ Mengingat hasil ekstraksi dari repositori ini akan digunakan sebagai fondasi _da
 
 Berikut adalah draf pembaruan `README.md` yang merangkum semua poin di atas dengan padat, profesional, dan relevan dengan alur kerja pengumpulan data:
 
-````markdown
 # Tokopedia Scraper (Playwright & Stealth) 🕷️📦
 
 Alat ekstraksi data (Web Scraper) otomatis menggunakan **Python Playwright**. Dirancang khusus dengan arsitektur modular dan CLI (Command Line Interface) untuk mengumpulkan _dataset_ harga dan informasi produk dari Tokopedia. Sangat cocok digunakan sebagai _pipeline_ awal untuk kebutuhan riset data dan _Machine Learning_.
@@ -30,13 +29,13 @@ Alat ekstraksi data (Web Scraper) otomatis menggunakan **Python Playwright**. Di
 ## 🛠️ Instalasi & Persiapan
 
 1. **Clone repositori dan siapkan Virtual Environment:**
+
    ```bash
    git clone [https://github.com/USERNAME_GITHUB_KAMU/tokopedia-scraper.git](https://github.com/USERNAME_GITHUB_KAMU/tokopedia-scraper.git)
    cd tokopedia-scraper
    python -m venv venv
    source venv/bin/activate
    ```
-````
 
 2. **Install Dependencies & Browser Playwright:**
    ```bash
