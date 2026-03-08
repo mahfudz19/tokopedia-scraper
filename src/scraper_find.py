@@ -11,29 +11,43 @@ async def extract_pagination_info(pagination_locator):
     Fungsi untuk mengekstrak nomor halaman yang sedang aktif
     dan mengecek apakah ada halaman selanjutnya.
     """
-    active_page_number = "unknown"
+    active_page_number = "1"  # Set default ke halaman 1
     next_url = None
-    
+
+    # --- LOGIKA BARU: FAST-FAIL ---
+    # Jika elemen paginasi tidak ada di DOM, langsung kembalikan default
+    if not await pagination_locator.is_visible():
+        print(
+            "[*] Paginasi tidak ditemukan. Mengasumsikan hasil pencarian hanya 1 halaman."
+        )
+        return active_page_number, next_url
+
     try:
         # Ekstrak halaman aktif
-        active_page_locator = pagination_locator.locator("a[data-active='true'], span[data-active='true']")
+        active_page_locator = pagination_locator.locator(
+            "a[data-active='true'], span[data-active='true']"
+        )
         active_page_number = await active_page_locator.inner_text()
-        print(f"[*] Halaman yang saat ini aktif/terlihat adalah Halaman: {active_page_number}")
-        
+        print(
+            f"[*] Halaman yang saat ini aktif/terlihat adalah Halaman: {active_page_number}"
+        )
+
         # Ekstrak halaman berikutnya
-        next_button_locator = pagination_locator.locator("a[aria-label='Laman berikutnya'], button[aria-label='Laman berikutnya']")
+        next_button_locator = pagination_locator.locator(
+            "a[aria-label='Laman berikutnya'], button[aria-label='Laman berikutnya']"
+        )
         is_next_available = await next_button_locator.is_visible()
-        
+
         if is_next_available:
             next_url = await next_button_locator.get_attribute("href")
             print(f"[+] Halaman berikutnya tersedia.")
             print(f"[*] URL Selanjutnya: {next_url}")
         else:
             print("[-] Ini adalah halaman terakhir. Tidak ada halaman berikutnya.")
-            
+
     except Exception as e:
         print(f"[-] Gagal mendeteksi informasi paginasi: {e}")
-        
+
     return active_page_number, next_url
 
 
@@ -42,10 +56,11 @@ async def extract_and_save_json(page, keyword, page_number):
     Fungsi untuk mengekstrak data dari DOM HTML dan menyimpannya sebagai JSON
     """
     print("\n[*] Mengekstrak data produk ke JSON...")
-    
+
     # Kita menggunakan page.evaluate() untuk menjalankan JavaScript langsung di browser.
     # Ini jauh lebih cepat dan lebih tahan banting terhadap perubahan CSS Tokopedia.
-    extracted_data = await page.evaluate('''() => {
+    extracted_data = await page.evaluate(
+        """() => {
         const results = [];
         
         // Mengambil semua kotak produk yang berawalan "divFindProduct"
@@ -100,8 +115,9 @@ async def extract_and_save_json(page, keyword, page_number):
             }
         });
         return results;
-    }''')
-    
+    }"""
+    )
+
     # Menyimpan list dictionary ke file JSON
     if extracted_data:
         folder_path = f"data/tokopedia_{keyword}_page_{page_number}"
@@ -110,8 +126,10 @@ async def extract_and_save_json(page, keyword, page_number):
         file_path = f"data/tokopedia_{keyword}_page_{page_number}/data.json"
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(extracted_data, f, ensure_ascii=False, indent=4)
-            
-        print(f"[v] Berhasil mengekstrak {len(extracted_data)} produk ke JSON: {file_path}")
+
+        print(
+            f"[v] Berhasil mengekstrak {len(extracted_data)} produk ke JSON: {file_path}"
+        )
     else:
         print("[-] Tidak ada data produk yang berhasil diekstrak ke JSON.")
 
@@ -121,17 +139,17 @@ async def scrape_find_page(keyword):
     Fungsi utama (Orchestrator) untuk mengatur alur kerja web scraping.
     """
     print("--- Step 1: Membuka Browser ---")
-    
+
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False) 
+        browser = await p.chromium.launch(headless=False)
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
         page = await context.new_page()
-        
+
         # stealth_plugin = Stealth()
-        # await stealth_plugin.apply_stealth_async(page) 
-        
+        # await stealth_plugin.apply_stealth_async(page)
+
         # Catatan: Saya mengubah &amp; menjadi & biasa pada URL agar lebih presisi
         url = f"https://www.tokopedia.com/find/{keyword}?utm_source=google&utm_medium=organic&utm_campaign=find&page=1"
         print(f"[*] Mencoba membuka: {url}")
@@ -139,26 +157,32 @@ async def scrape_find_page(keyword):
 
         # --- MEMANGGIL FUNGSI-FUNGSI HELPER ---
         # 1. Lakukan Scroll
-        pagination_locator = await scroll_to_element(page, "div[data-testid='cntrPagination']")
-        
+        pagination_locator = await scroll_to_element(
+            page, "div[data-testid='cntrPagination']"
+        )
+
         # 2. Ambil Info Halaman
         active_page_number, next_url = await extract_pagination_info(pagination_locator)
-        
+
         # 3. Ekstrak data mentah ke JSON untuk dataset (BARU)
         await extract_and_save_json(page, keyword, active_page_number)
-        
+
         # 4. Simpan visual halaman ke MHTML
         await save_page_as_mhtml(page, keyword, active_page_number)
-
 
         print("\n✓ Proses selesai. Browser ditutup dengan sukses.")
         await browser.close()
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Tokopedia Product Scraper')
-    parser.add_argument('--product', '-p', type=str, required=True, 
-                       help='Product keyword to search (can contain spaces)')
+    parser = argparse.ArgumentParser(description="Tokopedia Product Scraper")
+    parser.add_argument(
+        "--product",
+        "-p",
+        type=str,
+        required=True,
+        help="Product keyword to search (can contain spaces)",
+    )
     return parser.parse_args()
 
 
