@@ -12,8 +12,7 @@ __pycache__/
 .playwright/
 
 # Data hasil scraping (opsional, tergantung apakah kamu mau share datanya atau tidak)
-data/*.csv
-data/*.json
+data/*
 
 # macOS OS files
 .DS_Store
