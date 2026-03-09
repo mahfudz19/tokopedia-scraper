@@ -7,7 +7,10 @@ from src.database import db
 
 from playwright_stealth import stealth
 
-async def extract_pagination_info(pagination_locator: Locator) -> Tuple[str, Optional[str]]:
+
+async def extract_pagination_info(
+    pagination_locator: Locator,
+) -> Tuple[str, Optional[str]]:
     active_page_number: str = "1"
     next_url: Optional[str] = None
 
@@ -16,26 +19,31 @@ async def extract_pagination_info(pagination_locator: Locator) -> Tuple[str, Opt
             print("[*] Tidak ada paginasi. Ini adalah satu-satunya halaman.")
             return active_page_number, next_url
 
-        active_page_locator = pagination_locator.locator("a[data-active='true'], span[data-active='true']")
+        active_page_locator = pagination_locator.locator(
+            "a[data-active='true'], span[data-active='true']"
+        )
         active_page_number = await active_page_locator.inner_text(timeout=3000)
         print(f"[*] Halaman yang saat ini aktif: {active_page_number}")
 
-        next_button_locator = pagination_locator.locator("a[aria-label='Laman berikutnya'], button[aria-label='Laman berikutnya']")
+        next_button_locator = pagination_locator.locator(
+            "a[aria-label='Laman berikutnya'], button[aria-label='Laman berikutnya']"
+        )
         if await next_button_locator.is_visible():
             next_url = await next_button_locator.get_attribute("href")
             print(f"[+] Halaman berikutnya tersedia: {next_url}")
         else:
             print("[-] Ini adalah halaman terakhir.")
-            
+
     except Exception as e:
         print(f"[-] Gagal mendeteksi informasi paginasi: {e}")
 
     return active_page_number, next_url
 
+
 async def extract_data(page: Page) -> List[Dict[str, Any]]:
     """Hanya bertugas mengekstrak data dari DOM, tanpa melakukan penyimpanan."""
     print("\n[*] Mengekstrak data produk...")
-    
+
     extracted_data: List[Dict[str, Any]] = await page.evaluate(
         """() => {
         const results = [];
@@ -45,7 +53,9 @@ async def extract_data(page: Page) -> List[Dict[str, Any]]:
             const aTag = card.querySelector('a');
             if (!aTag) return; 
             
-            const url = aTag.href;
+            // CLEANING URL: Buang semua parameter tracking setelah tanda '?'
+            const url = aTag.href.split('?')[0];
+            
             const texts = aTag.innerText.split('\\n').map(t => t.trim()).filter(t => t.length > 0);
             
             let title = "Nama tidak ditemukan";
@@ -87,23 +97,24 @@ async def scrape_find_page(keyword: str) -> None:
         )
         page = await context.new_page()
 
-
         formatted_keyword = keyword.replace(" ", "%20")
         url = f"https://www.tokopedia.com/find/{formatted_keyword}?utm_source=google&utm_medium=organic&utm_campaign=find&page=1"
-        
+
         print(f"[*] Mencoba membuka: {url}")
-        
+
         # 3. BUNGKUS DENGAN TRY-EXCEPT DAN TAMBAHKAN TIMEOUT (60 Detik)
         try:
             await page.goto(url, wait_until="domcontentloaded", timeout=60000)
         except Exception as e:
             print(f"[!] Halaman gagal dimuat (Timeout/Diblokir): {e}")
             await browser.close()
-            return # Langsung keluar dari fungsi ini tanpa error merah di terminal
+            return  # Langsung keluar dari fungsi ini tanpa error merah di terminal
 
         # 1. Scroll
-        pagination_locator = await scroll_to_element(page, "div[data-testid='cntrPagination']")
-        
+        pagination_locator = await scroll_to_element(
+            page, "div[data-testid='cntrPagination']"
+        )
+
         # 2. Extract Pagination
         active_page_number, next_url = await extract_pagination_info(pagination_locator)
 
