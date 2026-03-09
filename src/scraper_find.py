@@ -4,6 +4,7 @@ import json
 import os
 from playwright.async_api import async_playwright
 from src.utils import save_page_as_mhtml, scroll_to_element
+# from playwright_stealth import Stealth
 
 
 async def extract_pagination_info(pagination_locator):
