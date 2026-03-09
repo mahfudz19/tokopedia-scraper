@@ -1,22 +1,19 @@
 import asyncio
 import argparse
 import os
+from typing import List
 
-# Perhatikan perubahan path import ini sesuai arsitektur folder baru!
 from src.scrapers.tokopedia.scraper_find import scrape_find_page
 from src.scrapers.tokopedia.scraper_search import scrape_search_page
 from src.database import db
 
-async def process_from_file(filename, method):
-    """
-    Membaca file txt dan melakukan looping scraping
-    """
+async def process_from_file(filename: str, method: str) -> None:
     if not os.path.exists(filename):
         print(f"\n[!] Error: File '{filename}' tidak ditemukan.")
         return
 
     with open(filename, 'r', encoding='utf-8') as f:
-        keywords = [line.strip() for line in f.readlines() if line.strip()]
+        keywords: List[str] = [line.strip() for line in f.readlines() if line.strip()]
 
     if not keywords:
         print(f"\n[!] File '{filename}' kosong.")
@@ -36,7 +33,7 @@ async def process_from_file(filename, method):
             print(f"[*] Jeda 5 detik sebelum keyword berikutnya...")
             await asyncio.sleep(5)
 
-async def main():
+async def main() -> None:
     parser = argparse.ArgumentParser(description="Multi-Marketplace Scraper CLI")
     parser.add_argument("-k", "--keyword", type=str, help="Satu keyword spesifik (contoh: tenda)")
     parser.add_argument("-f", "--file", type=str, default="keywords.txt", help="File target (default: keywords.txt)")
@@ -61,8 +58,6 @@ async def main():
             print(f"[*] Mode Batch. Membaca dari file: {args.file}")
             await process_from_file(args.file, args.method)
     finally:
-        # PENTING: Selalu tutup koneksi database saat script selesai, 
-        # baik berhasil maupun jika terjadi error di tengah jalan.
         db.close()
 
 if __name__ == "__main__":

@@ -1,65 +1,42 @@
 import asyncio
-import argparse
-import os
-from playwright.async_api import async_playwright
-from src.utils import save_page_as_mhtml, scroll_to_element
+from typing import Tuple, Optional, List, Dict, Any
+from playwright.async_api import async_playwright, Page, Locator
+
+from src.utils import save_page_as_mhtml, scroll_to_element, save_data_to_json
 from src.database import db
 
-# from playwright_stealth import Stealth
+from playwright_stealth import stealth
 
-
-async def extract_pagination_info(pagination_locator):
-    """
-    Fungsi untuk mengekstrak nomor halaman yang sedang aktif
-    dan mengecek apakah ada halaman selanjutnya.
-    """
-    active_page_number = "1"  # Default adalah halaman 1
-    next_url = None
+async def extract_pagination_info(pagination_locator: Locator) -> Tuple[str, Optional[str]]:
+    active_page_number: str = "1"
+    next_url: Optional[str] = None
 
     try:
-        # CEK DULU: Apakah elemen paginasi ada di dalam DOM?
         if await pagination_locator.count() == 0:
             print("[*] Tidak ada paginasi. Ini adalah satu-satunya halaman.")
             return active_page_number, next_url
 
-        # Ekstrak halaman aktif
-        active_page_locator = pagination_locator.locator(
-            "a[data-active='true'], span[data-active='true']"
-        )
-
-        # Tambahkan timeout 3 detik agar tidak menunggu 30 detik jika ada error minor
+        active_page_locator = pagination_locator.locator("a[data-active='true'], span[data-active='true']")
         active_page_number = await active_page_locator.inner_text(timeout=3000)
-        print(
-            f"[*] Halaman yang saat ini aktif/terlihat adalah Halaman: {active_page_number}"
-        )
+        print(f"[*] Halaman yang saat ini aktif: {active_page_number}")
 
-        # Ekstrak halaman berikutnya
-        next_button_locator = pagination_locator.locator(
-            "a[aria-label='Laman berikutnya'], button[aria-label='Laman berikutnya']"
-        )
-        is_next_available = await next_button_locator.is_visible()
-
-        if is_next_available:
+        next_button_locator = pagination_locator.locator("a[aria-label='Laman berikutnya'], button[aria-label='Laman berikutnya']")
+        if await next_button_locator.is_visible():
             next_url = await next_button_locator.get_attribute("href")
-            print(f"[+] Halaman berikutnya tersedia.")
-            print(f"[*] URL Selanjutnya: {next_url}")
+            print(f"[+] Halaman berikutnya tersedia: {next_url}")
         else:
-            print("[-] Ini adalah halaman terakhir. Tidak ada halaman berikutnya.")
-
+            print("[-] Ini adalah halaman terakhir.")
+            
     except Exception as e:
         print(f"[-] Gagal mendeteksi informasi paginasi: {e}")
 
     return active_page_number, next_url
 
-
-async def extract_and_save_data(page, keyword, page_number):
-    """
-    Fungsi untuk mengekstrak data dari DOM HTML dan langsung menyimpannya ke MongoDB.
-    """
+async def extract_data(page: Page) -> List[Dict[str, Any]]:
+    """Hanya bertugas mengekstrak data dari DOM, tanpa melakukan penyimpanan."""
     print("\n[*] Mengekstrak data produk...")
-
-    # Kita menggunakan page.evaluate() untuk menjalankan JavaScript langsung di browser.
-    extracted_data = await page.evaluate(
+    
+    extracted_data: List[Dict[str, Any]] = await page.evaluate(
         """() => {
         const results = [];
         const cards = document.querySelectorAll('div[data-testid^="divFindProduct"]');
@@ -80,8 +57,7 @@ async def extract_and_save_data(page, keyword, page_number):
                 const text = texts[i];
                 if (text.startsWith("Rp") && price === 0) {
                     price = parseInt(text.replace(/[^0-9]/g, '')) || 0;
-                } 
-                else if (text.length > 15 && title === "Nama tidak ditemukan" && price === 0) {
+                } else if (text.length > 15 && title === "Nama tidak ditemukan" && price === 0) {
                     title = text;
                 }
             }
@@ -92,30 +68,16 @@ async def extract_and_save_data(page, keyword, page_number):
             }
             
             if (price > 0 && title !== "Nama tidak ditemukan") {
-                results.push({
-                    name: title,
-                    price_rp: price,
-                    shop: shop,
-                    location: location,
-                    url: url
-                });
+                results.push({ name: title, price_rp: price, shop: shop, location: location, url: url });
             }
         });
         return results;
     }"""
     )
-
-    if extracted_data:
-        print(f"[*] Menemukan {len(extracted_data)} produk. Mengirim ke MongoDB...")
-        db.insert_products(extracted_data, source_marketplace="Tokopedia")
-    else:
-        print("[-] Tidak ada data produk yang berhasil diekstrak.")
+    return extracted_data
 
 
-async def scrape_find_page(keyword):
-    """
-    Fungsi utama (Orchestrator) untuk mengatur alur kerja web scraping.
-    """
+async def scrape_find_page(keyword: str) -> None:
     print("--- Step 1: Membuka Browser ---")
 
     async with async_playwright() as p:
@@ -125,40 +87,38 @@ async def scrape_find_page(keyword):
         )
         page = await context.new_page()
 
-        # stealth_plugin = Stealth()
-        # await stealth_plugin.apply_stealth_async(page)
 
         formatted_keyword = keyword.replace(" ", "%20")
         url = f"https://www.tokopedia.com/find/{formatted_keyword}?utm_source=google&utm_medium=organic&utm_campaign=find&page=1"
+        
         print(f"[*] Mencoba membuka: {url}")
-        await page.goto(url, wait_until="domcontentloaded")
+        
+        # 3. BUNGKUS DENGAN TRY-EXCEPT DAN TAMBAHKAN TIMEOUT (60 Detik)
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        except Exception as e:
+            print(f"[!] Halaman gagal dimuat (Timeout/Diblokir): {e}")
+            await browser.close()
+            return # Langsung keluar dari fungsi ini tanpa error merah di terminal
 
-        pagination_locator = await scroll_to_element(
-            page, "div[data-testid='cntrPagination']"
-        )
-
+        # 1. Scroll
+        pagination_locator = await scroll_to_element(page, "div[data-testid='cntrPagination']")
+        
+        # 2. Extract Pagination
         active_page_number, next_url = await extract_pagination_info(pagination_locator)
 
-        await extract_and_save_data(page, keyword, active_page_number)
+        # 3. Extract Data Mentah
+        data: List[Dict[str, Any]] = await extract_data(page)
 
+        # 4. Distribusikan Data (JSON Lokal & MongoDB)
+        if data:
+            await save_data_to_json(data, keyword, active_page_number)
+            db.insert_products(data, source_marketplace="Tokopedia")
+        else:
+            print("[-] Tidak ada data yang diekstrak.")
+
+        # 5. Backup HTML
         await save_page_as_mhtml(page, keyword, active_page_number)
 
         print("\n✓ Proses selesai. Browser ditutup dengan sukses.")
         await browser.close()
-
-
-def parse_arguments():
-    parser = argparse.ArgumentParser(description="Tokopedia Product Scraper")
-    parser.add_argument(
-        "--product",
-        "-p",
-        type=str,
-        required=True,
-        help="Product keyword to search (can contain spaces)",
-    )
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    args = parse_arguments()
-    asyncio.run(scrape_find_page(args.product))
