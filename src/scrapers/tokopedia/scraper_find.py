@@ -1,11 +1,9 @@
-import asyncio
 from typing import Tuple, Optional, List, Dict, Any
 from playwright.async_api import async_playwright, Page, Locator
 
 from src.utils import save_page_as_mhtml, scroll_to_element, save_data_to_json
 from src.database import db
 
-from playwright_stealth import stealth
 
 
 async def extract_pagination_info(
