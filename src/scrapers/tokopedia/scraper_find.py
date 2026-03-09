@@ -1,9 +1,10 @@
 import asyncio
 import argparse
-import json
 import os
 from playwright.async_api import async_playwright
 from src.utils import save_page_as_mhtml, scroll_to_element
+from src.database import db
+
 # from playwright_stealth import Stealth
 
 
@@ -51,30 +52,23 @@ async def extract_pagination_info(pagination_locator):
     return active_page_number, next_url
 
 
-async def extract_and_save_json(page, keyword, page_number):
+async def extract_and_save_data(page, keyword, page_number):
     """
-    Fungsi untuk mengekstrak data dari DOM HTML dan menyimpannya sebagai JSON
+    Fungsi untuk mengekstrak data dari DOM HTML dan langsung menyimpannya ke MongoDB.
     """
-    print("\n[*] Mengekstrak data produk ke JSON...")
+    print("\n[*] Mengekstrak data produk...")
 
     # Kita menggunakan page.evaluate() untuk menjalankan JavaScript langsung di browser.
-    # Ini jauh lebih cepat dan lebih tahan banting terhadap perubahan CSS Tokopedia.
     extracted_data = await page.evaluate(
         """() => {
         const results = [];
-        
-        // Mengambil semua kotak produk yang berawalan "divFindProduct"
         const cards = document.querySelectorAll('div[data-testid^="divFindProduct"]');
         
         cards.forEach(card => {
             const aTag = card.querySelector('a');
-            if (!aTag) return; // Lewati jika tidak ada link
+            if (!aTag) return; 
             
             const url = aTag.href;
-            
-            // Trik Anti-Blokir Class CSS: 
-            // Kita ambil seluruh teks mentah di dalam card, lalu pisahkan per baris (enter).
-            // Teks biasanya berurutan: [Diskon], Judul, Harga, Lokasi, Nama Toko.
             const texts = aTag.innerText.split('\\n').map(t => t.trim()).filter(t => t.length > 0);
             
             let title = "Nama tidak ditemukan";
@@ -82,28 +76,21 @@ async def extract_and_save_json(page, keyword, page_number):
             let shop = "Toko tidak diketahui";
             let location = "Lokasi tidak diketahui";
             
-            // Looping cerdas untuk menebak isi teks berdasarkan polanya
             for (let i = 0; i < texts.length; i++) {
                 const text = texts[i];
-                
-                // Jika teks diawali Rp, itu pasti Harga
                 if (text.startsWith("Rp") && price === 0) {
-                    // Bersihkan karakter non-angka (misal Rp146.250 -> 146250)
                     price = parseInt(text.replace(/[^0-9]/g, '')) || 0;
                 } 
-                // Jika teks panjang dan belum ada harga, kemungkinan besar itu Judul Produk
                 else if (text.length > 15 && title === "Nama tidak ditemukan" && price === 0) {
                     title = text;
                 }
             }
             
-            // Nama toko dan lokasi biasanya selalu berada di 2 baris terakhir elemen
             if (texts.length >= 2) {
-                location = texts[texts.length - 1]; // Baris paling bawah
-                shop = texts[texts.length - 2];     // Satu baris di atas lokasi
+                location = texts[texts.length - 1]; 
+                shop = texts[texts.length - 2];     
             }
             
-            // Hanya simpan jika harga dan judul berhasil diekstrak
             if (price > 0 && title !== "Nama tidak ditemukan") {
                 results.push({
                     name: title,
@@ -118,20 +105,11 @@ async def extract_and_save_json(page, keyword, page_number):
     }"""
     )
 
-    # Menyimpan list dictionary ke file JSON
     if extracted_data:
-        folder_path = f"data/tokopedia_{keyword}_page_{page_number}"
-        os.makedirs(folder_path, exist_ok=True)
-
-        file_path = f"data/tokopedia_{keyword}_page_{page_number}/data.json"
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(extracted_data, f, ensure_ascii=False, indent=4)
-
-        print(
-            f"[v] Berhasil mengekstrak {len(extracted_data)} produk ke JSON: {file_path}"
-        )
+        print(f"[*] Menemukan {len(extracted_data)} produk. Mengirim ke MongoDB...")
+        db.insert_products(extracted_data, source_marketplace="Tokopedia")
     else:
-        print("[-] Tidak ada data produk yang berhasil diekstrak ke JSON.")
+        print("[-] Tidak ada data produk yang berhasil diekstrak.")
 
 
 async def scrape_find_page(keyword):
@@ -150,24 +128,19 @@ async def scrape_find_page(keyword):
         # stealth_plugin = Stealth()
         # await stealth_plugin.apply_stealth_async(page)
 
-        # Catatan: Saya mengubah &amp; menjadi & biasa pada URL agar lebih presisi
-        url = f"https://www.tokopedia.com/find/{keyword}?utm_source=google&utm_medium=organic&utm_campaign=find&page=1"
+        formatted_keyword = keyword.replace(" ", "%20")
+        url = f"https://www.tokopedia.com/find/{formatted_keyword}?utm_source=google&utm_medium=organic&utm_campaign=find&page=1"
         print(f"[*] Mencoba membuka: {url}")
         await page.goto(url, wait_until="domcontentloaded")
 
-        # --- MEMANGGIL FUNGSI-FUNGSI HELPER ---
-        # 1. Lakukan Scroll
         pagination_locator = await scroll_to_element(
             page, "div[data-testid='cntrPagination']"
         )
 
-        # 2. Ambil Info Halaman
         active_page_number, next_url = await extract_pagination_info(pagination_locator)
 
-        # 3. Ekstrak data mentah ke JSON untuk dataset (BARU)
-        await extract_and_save_json(page, keyword, active_page_number)
+        await extract_and_save_data(page, keyword, active_page_number)
 
-        # 4. Simpan visual halaman ke MHTML
         await save_page_as_mhtml(page, keyword, active_page_number)
 
         print("\n✓ Proses selesai. Browser ditutup dengan sukses.")
