@@ -1,9 +1,11 @@
+import asyncio
 from typing import List, Dict, Any
 from playwright.async_api import async_playwright, Page
-from playwright_stealth import stealth
 
 from src.utils import save_page_as_mhtml, scroll_to_element, save_data_to_json
 from src.database import db
+
+# from playwright_stealth import stealth
 
 
 async def extract_data(page: Page) -> List[Dict[str, Any]]:
@@ -79,7 +81,7 @@ async def scrape_lazada_tag(keyword: str) -> None:
         page = await context.new_page()
 
         # Wajib stealth di Lazada
-        await stealth(page)
+        # await stealth(page)
 
         # URL Lazada menggunakan strip "-" bukan "%20" di rute tag
         formatted_keyword = keyword.replace(" ", "-")
@@ -96,6 +98,8 @@ async def scrape_lazada_tag(keyword: str) -> None:
 
         # 1. Scroll sampai ke elemen paginasi Lazada (biasanya ul.ant-pagination)
         await scroll_to_element(page, "ul.ant-pagination", max_attempts=15)
+
+        await asyncio.sleep(60)
 
         # Sementara kita hardcode halaman 1 (bisa kita kembangkan logikanya nanti)
         active_page_number = "1"

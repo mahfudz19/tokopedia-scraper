@@ -5,7 +5,6 @@ from src.utils import save_page_as_mhtml, scroll_to_element, save_data_to_json
 from src.database import db
 
 
-
 async def extract_pagination_info(
     pagination_locator: Locator,
 ) -> Tuple[str, Optional[str]]:
