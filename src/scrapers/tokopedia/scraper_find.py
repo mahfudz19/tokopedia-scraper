@@ -123,12 +123,12 @@ async def scrape_find_page(keyword: str) -> None:
 
         # 4. Distribusikan Data (JSON Lokal & MongoDB)
         if data:
-            await save_data_to_json(data, keyword, active_page_number)
             db.insert_products(data, source_marketplace="Tokopedia")
         else:
             print("[-] Tidak ada data yang diekstrak.")
 
         # 5. Backup HTML
+        await save_data_to_json(data, keyword, active_page_number)
         await save_page_as_mhtml(page, keyword, active_page_number)
 
         print("\n✓ Proses selesai. Browser ditutup dengan sukses.")
