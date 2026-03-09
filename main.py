@@ -1,12 +1,15 @@
 import asyncio
 import argparse
 import os
-from src.scraper_find import scrape_find_page
-from src.scraper_search import scrape_search_page
+
+# Perhatikan perubahan path import ini sesuai arsitektur folder baru!
+from src.scrapers.tokopedia.scraper_find import scrape_find_page
+from src.scrapers.tokopedia.scraper_search import scrape_search_page
+from src.database import db
 
 async def process_from_file(filename, method):
     """
-    Fungsi untuk membaca file txt dan melakukan looping scraping
+    Membaca file txt dan melakukan looping scraping
     """
     if not os.path.exists(filename):
         print(f"\n[!] Error: File '{filename}' tidak ditemukan.")
@@ -34,32 +37,33 @@ async def process_from_file(filename, method):
             await asyncio.sleep(5)
 
 async def main():
-    # Membuat CLI Argument Parser
-    parser = argparse.ArgumentParser(description="Tokopedia Scraper CLI")
+    parser = argparse.ArgumentParser(description="Multi-Marketplace Scraper CLI")
     parser.add_argument("-k", "--keyword", type=str, help="Satu keyword spesifik (contoh: tenda)")
     parser.add_argument("-f", "--file", type=str, default="keywords.txt", help="File target (default: keywords.txt)")
-    
-    # Membuat argumen method, dengan "find" sebagai default
     parser.add_argument("-m", "--method", type=str, choices=["find", "search"], default="find", 
-                        help="Metode scraping: 'find' (Aman) atau 'search' (Eksperimental). Default: find")
+                        help="Metode scraping (Default: find)")
     
     args = parser.parse_args()
 
     print("="*40)
-    print("🤖 TOKOPEDIA SCRAPER BOT")
+    print("🤖 E-COMMERCE SCRAPER BOT")
     print("="*40)
     print(f"[*] Metode aktif: /{args.method}\n")
 
-    # Logika eksekusi berdasarkan argumen
-    if args.keyword:
-        print(f"[*] Menjalankan mode Single Keyword: '{args.keyword}'")
-        if args.method == "find":
-            await scrape_find_page(args.keyword)
-        elif args.method == "search":
-            await scrape_search_page(args.keyword)
-    else:
-        print(f"[*] Mode Batch. Membaca dari file: {args.file}")
-        await process_from_file(args.file, args.method)
+    try:
+        if args.keyword:
+            print(f"[*] Menjalankan mode Single Keyword: '{args.keyword}'")
+            if args.method == "find":
+                await scrape_find_page(args.keyword)
+            elif args.method == "search":
+                await scrape_search_page(args.keyword)
+        else:
+            print(f"[*] Mode Batch. Membaca dari file: {args.file}")
+            await process_from_file(args.file, args.method)
+    finally:
+        # PENTING: Selalu tutup koneksi database saat script selesai, 
+        # baik berhasil maupun jika terjadi error di tengah jalan.
+        db.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
