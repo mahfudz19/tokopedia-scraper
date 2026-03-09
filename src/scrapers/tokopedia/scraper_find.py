@@ -1,7 +1,7 @@
 from typing import Tuple, Optional, List, Dict, Any
 from playwright.async_api import async_playwright, Page, Locator
 
-from src.utils import save_page_as_mhtml, scroll_to_element, save_data_to_json
+from src.utils import save_page_as_mhtml, scroll_to_bottom, save_data_to_json
 from src.database import db
 
 
@@ -108,9 +108,7 @@ async def scrape_find_page(keyword: str) -> None:
             return  # Langsung keluar dari fungsi ini tanpa error merah di terminal
 
         # 1. Scroll
-        pagination_locator = await scroll_to_element(
-            page, "div[data-testid='cntrPagination']"
-        )
+        pagination_locator = await scroll_to_bottom(page, max_attempts=15)
 
         # 2. Extract Pagination
         active_page_number, next_url = await extract_pagination_info(pagination_locator)

@@ -2,7 +2,7 @@ import asyncio
 from typing import List, Dict, Any
 from playwright.async_api import async_playwright, Page
 
-from src.utils import save_page_as_mhtml, scroll_to_element, save_data_to_json
+from src.utils import save_page_as_mhtml, scroll_to_bottom, save_data_to_json
 from src.database import db
 
 # from playwright_stealth import stealth
@@ -97,9 +97,7 @@ async def scrape_lazada_tag(keyword: str) -> None:
             return
 
         # 1. Scroll sampai ke elemen paginasi Lazada (biasanya ul.ant-pagination)
-        await scroll_to_element(page, "ul.ant-pagination", max_attempts=15)
-
-        await asyncio.sleep(60)
+        await scroll_to_bottom(page, max_attempts=15)
 
         # Sementara kita hardcode halaman 1 (bisa kita kembangkan logikanya nanti)
         active_page_number = "1"
@@ -109,7 +107,7 @@ async def scrape_lazada_tag(keyword: str) -> None:
 
         # 3. Distribusikan Data ke file lokal dan MongoDB
         if data:
-            await save_data_to_json(data, f"lazada_{keyword}", active_page_number)
+            await save_data_to_json(data, keyword, active_page_number, prefix="lazada")
             db.insert_products(data, source_marketplace="Lazada")
         else:
             print(
@@ -117,7 +115,7 @@ async def scrape_lazada_tag(keyword: str) -> None:
             )
 
         # 4. Backup HTML
-        await save_page_as_mhtml(page, f"lazada_{keyword}", active_page_number)
+        await save_page_as_mhtml(page, keyword, active_page_number, prefix="lazada")
 
         print("\n✓ Proses Lazada selesai. Browser ditutup dengan sukses.")
         await browser.close()
