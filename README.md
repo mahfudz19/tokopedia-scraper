@@ -19,7 +19,7 @@ Pastikan perangkat Anda sudah terpasang:
 
 ## 🛠️ Instalasi & Persiapan
 
-**1. Clone repositori dan siapkan Virtual Environment:**
+1. **Clone repositori dan siapkan Virtual Environment:**
    ```bash
    git clone https://github.com/mahfudz19/tokopedia-scraper.git
    cd tokopedia-scraper
