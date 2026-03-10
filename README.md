@@ -21,7 +21,7 @@ Pastikan perangkat Anda sudah terpasang:
 
 **1. Clone repositori dan siapkan Virtual Environment:**
    ```bash
-   git clone [https://github.com/USERNAME_GITHUB_KAMU/tokopedia-scraper.git](https://github.com/USERNAME_GITHUB_KAMU/tokopedia-scraper.git)
+   git clone https://github.com/mahfudz19/tokopedia-scraper.git
    cd tokopedia-scraper
    python -m venv venv
    
