@@ -43,7 +43,6 @@ Pastikan perangkat Anda sudah terpasang:
    ```Cuplikan kode
    MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.../scraper?retryWrites=true&w=majority
    ```
-   (Catatan: Jangan pernah melakukan commit file `.env` ke GitHub publik).
 
 ## 💻 Cara Penggunaan (CLI)
 
