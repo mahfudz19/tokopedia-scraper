@@ -84,7 +84,7 @@ async def scrape_lazada_tag(keyword: str) -> None:
         # await stealth(page)
 
         # URL Lazada menggunakan strip "-" bukan "%20" di rute tag
-        formatted_keyword = keyword.replace(" ", "-")
+        formatted_keyword = keyword.replace(" ", "-").lower()
         url = f"https://www.lazada.co.id/tag/{formatted_keyword}/"
 
         print(f"[*] Mencoba membuka: {url}")

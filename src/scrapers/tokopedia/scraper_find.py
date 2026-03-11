@@ -94,7 +94,7 @@ async def scrape_find_page(keyword: str) -> None:
         )
         page = await context.new_page()
 
-        formatted_keyword = keyword.replace(" ", "%20")
+        formatted_keyword = keyword.replace(" ", "%20").lower()
         url = f"https://www.tokopedia.com/find/{formatted_keyword}?utm_source=google&utm_medium=organic&utm_campaign=find&page=1"
 
         print(f"[*] Mencoba membuka: {url}")
