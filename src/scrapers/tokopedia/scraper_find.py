@@ -85,8 +85,6 @@ async def extract_data(page: Page) -> List[Dict[str, Any]]:
 
 
 async def scrape_find_page(keyword: str) -> None:
-    print("--- Step 1: Membuka Browser ---")
-
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False)
         context = await browser.new_context(

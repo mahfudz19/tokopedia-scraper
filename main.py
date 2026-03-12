@@ -33,8 +33,8 @@ async def process_from_file(filename: str, method: str) -> None:
             await scrape_lazada_tag(keyword)
         
         if index < len(keywords):
-            print(f"[*] Jeda 5 detik sebelum keyword berikutnya...")
-            await asyncio.sleep(5)
+            print(f"[*] Jeda 2 detik sebelum keyword berikutnya...")
+            await asyncio.sleep(2)
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Multi-Marketplace Scraper CLI")

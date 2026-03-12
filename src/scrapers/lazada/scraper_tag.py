@@ -71,8 +71,6 @@ async def extract_data(page: Page) -> List[Dict[str, Any]]:
 
 
 async def scrape_lazada_tag(keyword: str) -> None:
-    print("--- Step 1: Membuka Browser (Lazada) ---")
-
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=False)
         context = await browser.new_context(
