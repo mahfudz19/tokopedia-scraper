@@ -19,9 +19,9 @@ Pastikan perangkat Anda sudah terpasang:
 
 ## 🛠️ Instalasi & Persiapan
 
-**1. Clone repositori dan siapkan Virtual Environment:**
+1. **Clone repositori dan siapkan Virtual Environment:**
    ```bash
-   git clone [https://github.com/USERNAME_GITHUB_KAMU/tokopedia-scraper.git](https://github.com/USERNAME_GITHUB_KAMU/tokopedia-scraper.git)
+   git clone https://github.com/mahfudz19/tokopedia-scraper.git
    cd tokopedia-scraper
    python -m venv venv
    
@@ -43,7 +43,6 @@ Pastikan perangkat Anda sudah terpasang:
    ```Cuplikan kode
    MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.../scraper?retryWrites=true&w=majority
    ```
-   (Catatan: Jangan pernah melakukan commit file `.env` ke GitHub publik).
 
 ## 💻 Cara Penggunaan (CLI)
 
