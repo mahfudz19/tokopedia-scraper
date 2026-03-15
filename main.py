@@ -4,8 +4,8 @@ import os
 from typing import List
 
 from src.scrapers.tokopedia.scraper_find import scrape_find_page
-from src.scrapers.tokopedia.scraper_search import scrape_search_page
-from src.scrapers.lazada.scraper_tag import scrape_lazada_tag # <- Import scraper Lazada
+from src.scrapers.lazada.scraper_tag import scrape_lazada_tag 
+from src.scrapers.shopee.scraper_search import scrape_shopee_search
 from src.database import db
 
 async def process_from_file(filename: str, method: str) -> None:
@@ -25,12 +25,12 @@ async def process_from_file(filename: str, method: str) -> None:
     for index, keyword in enumerate(keywords, start=1):
         print(f"\n{'-'*30}\nMemproses [{index}/{len(keywords)}]: {keyword}\n{'-'*30}")
         
-        if method == "find":
+        if method == "tokopedia":
             await scrape_find_page(keyword)
-        elif method == "search":
-            await scrape_search_page(keyword)
-        elif method == "lazada": # <- Logika untuk batch Lazada
+        elif method == "lazada": 
             await scrape_lazada_tag(keyword)
+        elif method == "shopee":
+            await scrape_shopee_search(keyword)
         
         if index < len(keywords):
             print(f"[*] Jeda 2 detik sebelum keyword berikutnya...")
@@ -42,8 +42,8 @@ async def main() -> None:
     parser.add_argument("-f", "--file", type=str, default="keywords.txt", help="File target (default: keywords.txt)")
     
     # PERBAIKAN DI SINI: Menambahkan "lazada" ke dalam daftar choices
-    parser.add_argument("-m", "--method", type=str, choices=["find", "search", "lazada"], default="find", 
-                        help="Metode scraping (Default: find)")
+    parser.add_argument("-m", "--method", type=str, choices=["tokopedia", "shopee", "lazada"], default="shopee", 
+                        help="Metode scraping (Default: tokopedia)")
     
     args = parser.parse_args()
 
@@ -55,12 +55,12 @@ async def main() -> None:
     try:
         if args.keyword:
             print(f"[*] Menjalankan mode Single Keyword: '{args.keyword}'")
-            if args.method == "find":
+            if args.method == "tokopedia":
                 await scrape_find_page(args.keyword)
-            elif args.method == "search":
-                await scrape_search_page(args.keyword)
-            elif args.method == "lazada": # <- Logika untuk single keyword Lazada
+            elif args.method == "lazada":
                 await scrape_lazada_tag(args.keyword)
+            elif args.method == "shopee":
+                await scrape_shopee_search(args.keyword)
         else:
             print(f"[*] Mode Batch. Membaca dari file: {args.file}")
             await process_from_file(args.file, args.method)
