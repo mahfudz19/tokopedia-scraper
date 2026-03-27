@@ -1,90 +1,104 @@
-# Multi-Marketplace E-Commerce Scraper 🕸️📦
+```markdown
+# 🤖 E-Commerce Scraper Bot (Tokopedia, Lazada, Shopee)
 
-Alat ekstraksi data (Web Scraper) otomatis yang tangguh menggunakan **Python Playwright**. Dirancang dengan arsitektur modular untuk mengekstrak data produk (Nama, Harga, Toko, Lokasi, dan URL) dari **Tokopedia** dan **Lazada**, lalu menyimpannya langsung ke **MongoDB** terpusat.
+Sebuah bot *web scraping* berbasis Python untuk mengekstrak data produk (nama, harga, lokasi, URL) dari tiga *marketplace* besar di Indonesia: **Tokopedia**, **Lazada**, dan **Shopee**. 
 
-Sangat cocok digunakan sebagai *pipeline* awal untuk riset harga, analisis kompetitor, atau pembuatan *dataset Machine Learning*.
+Bot ini dilengkapi dengan sistem *anti-bot bypass*, penyimpanan lokal (JSON & MHTML), dan integrasi langsung ke *database* MongoDB.
 
 ## ✨ Fitur Utama
-* **Multi-Marketplace Support:** Mendukung scraping dari Tokopedia (rute `/find` & `/search`) dan Lazada (rute `/tag`).
-* **MongoDB Integration (Upsert):** Data langsung diunggah ke MongoDB. Menggunakan mekanisme *Upsert* dan indeks unik berdasarkan URL produk untuk **mencegah data duplikat** dan secara otomatis memperbarui harga jika ada perubahan.
-* **Anti-Bot & Stealth Mode:** Terintegrasi dengan `playwright-stealth` dan teknik navigasi cerdas untuk menyamarkan *browser* dari sistem deteksi bot (WAF/CAPTCHA).
-* **Dual Output System:** Selain ke MongoDB, setiap proses akan menghasilkan cadangan data mentah berupa **JSON** dan **MHTML** (*snapshot* visual halaman utuh yang bisa dibuka secara *offline*) di folder lokal.
-* **Batch Processing:** Mendukung pemrosesan banyak kata kunci sekaligus secara otomatis menggunakan file teks.
 
-## 🚀 Prasyarat Sistem
-Pastikan perangkat Anda sudah terpasang:
-* **Python 3.10** atau lebih baru.
-* Akun dan Cluster **MongoDB** (Bisa menggunakan MongoDB Atlas gratis).
-* Git.
+- **Multi-Marketplace Support**: Bisa digunakan untuk Tokopedia, Lazada, dan Shopee.
+- **Anti-Bot Bypass**:
+  - **Tokopedia & Lazada**: Menggunakan **Playwright** Asynchronous untuk performa tinggi.
+  - **Shopee**: Menggunakan **Selenium + Undetected-Chromedriver** untuk menembus pengamanan ketat Datadome Shopee.
+- **Auto-Scroll**: Menggulir halaman secara otomatis untuk memuat produk yang menggunakan metode *lazy-loading*.
+- **Multi-Output Storage**:
+  - Menyimpan data bersih ke dalam file `JSON`.
+  - Mengunggah data langsung ke koleksi `MongoDB`.
+  - Merekam salinan halaman web dalam format `MHTML` sebagai *backup* visual.
+- **Batch Processing**: Mendukung pencarian banyak *keyword* sekaligus melalui file `.txt`.
 
-## 🛠️ Instalasi & Persiapan
+## ⚙️ Persyaratan Sistem
 
-1. **Clone repositori dan siapkan Virtual Environment:**
+- Python 3.10 atau lebih baru.
+- Google Chrome Browser (Wajib terinstal di OS untuk mode Shopee).
+- MongoDB (Berjalan secara lokal atau *cloud*/Atlas).
+
+## 🚀 Instalasi
+
+1. **Clone repositori ini:**
    ```bash
-   git clone https://github.com/mahfudz19/tokopedia-scraper.git
+   git clone [https://github.com/mahfudz19/tokopedia-scraper.git](https://github.com/mahfudz19/tokopedia-scraper.git)
    cd tokopedia-scraper
-   python -m venv venv
-   
-   # Aktifkan virtual environment
-   # Mac/Linux:
-   source venv/bin/activate
-   # Windows:
-   venv\Scripts\activate
    ```
 
-2. **Install Dependencies & Browser Playwright:**
+2. **Buat dan aktifkan Virtual Environment (Opsional namun disarankan):**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Untuk Mac/Linux
+   # venv\Scripts\activate   # Untuk Windows
+   ```
+
+3. **Instal Library yang dibutuhkan:**
    ```bash
    pip install -r requirements.txt
+   ```
+
+4. **Instal Playwright Chromium Browser (Untuk Tokopedia & Lazada):**
+   ```bash
    playwright install chromium
    ```
-   
-3. **Konfigurasi Database (PENTING):**
-   Buat sebuah file bernama `.env` di folder utama (sejajar dengan `main.py`). Isi file tersebut dengan Connection String MongoDB Anda:
-   ```Cuplikan kode
-   MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.../scraper?retryWrites=true&w=majority
-   ```
 
-## 💻 Cara Penggunaan (CLI)
+5. **Konfigurasi Environment:**
+   - Salin file `.env.example` menjadi `.env`.
+   - Atur URL koneksi MongoDB kamu di dalam file `.env` tersebut.
+     ```env
+     MONGO_URI=mongodb://localhost:27017/
+     ```
 
-Program ini menggunakan Argparse dan berjalan sepenuhnya melalui terminal.
+## 💻 Cara Penggunaan
 
-**Opsi Argumen:**
+Skrip utama `main.py` menggunakan argumen CLI (Command Line Interface).
 
-- `-k` atau `--keyword` : Untuk mencari satu produk spesifik.
-- `-f` atau `--file` : Untuk membaca daftar produk dari file teks (Batch Mode). Default: `keywords.txt`.
-- `-m` atau `--method` : Memilih robot scraper (`find` [Tokopedia], `search` [Tokopedia], atau `lazada`). Default: `find`.
+### Argumen yang Tersedia:
+- `-k` atau `--keyword`: Untuk mencari satu kata kunci spesifik.
+- `-f` atau `--file`: Untuk mencari banyak kata kunci secara berurutan dari file .txt (Default: `keywords.txt`).
+- `-m` atau `--method`: Memilih marketplace target. Pilihan: `tokopedia`, `lazada`, `shopee`. (Default: `shopee`).
 
-**Contoh Eksekusi:**
+### Contoh Perintah:
 
-1. **Menjalankan Satu Keyword (Metode Default /find):**
+**1. Mencari 1 Keyword di Shopee (Saran untuk pemula):**
+```bash
+python main.py -k "macbook m1 pro" -m shopee
+```
 
-   ```bash
-   python main.py -k "tenda camping"
-   ```
+**2. Mencari 1 Keyword di Tokopedia:**
+```bash
+python main.py -k "tenda camping" -m tokopedia
+```
 
-2. **Menjalankan Batch Mode (Membaca file `keywords.txt`):**
+**3. Mencari 1 Keyword di Lazada:**
+```bash
+python main.py -k "sepatu running" -m lazada
+```
 
-   ```bash
-   python main.py -f keywords.txt
-   ```
+**4. Mencari banyak Keyword secara otomatis (Batch Mode):**
+Buat daftar kata kunci di file `keywords.txt` (tiap baris 1 kata kunci), lalu jalankan:
+```bash
+python main.py -f keywords.txt -m shopee
+```
 
-3. **Eksperimen dengan Metode /search:**
-   ```bash
-   python main.py -k "helm full face" -m search
-   ```
-   
-1. Scraping Tokopedia (Satu Keyword):
-   ```bash
-   python main.py -k "helm full face"
-   ```
-   
-2. Scraping Lazada (Satu Keyword):
-   ```bash
-   python main.py -k "tempat bekal piknik set" -m lazada
-   ```
-   
-3. Batch Mode / Otomatisasi Banyak Keyword:
-   Siapkan file `keywords.txt` (isi dengan kata kunci, satu per baris), lalu jalankan:
-   ```bash
-   python main.py -f keywords.txt -m lazada
-   ```
+## ⚠️ Catatan Khusus untuk Shopee (Datadome Bypass)
+
+Shopee memiliki sistem pertahanan *anti-bot* (Datadome) yang sangat ketat. Skrip ini menggunakan pendekatan **"Persistent Session & Manual Intervention"**:
+
+1. Saat pertama kali dijalankan, bot akan memantau apakah ada pengalihan ( *redirect*) ke halaman CAPTCHA atau Login.
+2. Jika terdeteksi, **skrip akan dijeda di terminal**.
+3. Anda diharuskan menyelesaikan *puzzle* CAPTCHA atau melakukan Login secara **manual** langsung di jendela *browser* Chrome yang terbuka.
+4. Setelah Anda berhasil lolos dan masuk ke halaman pencarian dengan aman, **kembali ke terminal dan tekan `ENTER`**.
+5. Bot akan melanjutkan tugasnya menarik data dan akan menyimpan "paspor" atau status sesi tersebut di dalam folder lokal (`./shopee_profile_uc`).
+6. Untuk eksekusi di hari-hari berikutnya, bot akan berjalan sepenuhnya otomatis karena status *login*/kepercayaan Anda sudah tersimpan!
+
+## 📝 Lisensi
+Proyek ini dibuat untuk tujuan pembelajaran dan portofolio Data Engineering. Pastikan untuk selalu mematuhi *Terms of Service* dari masing-masing situs web.
+```
