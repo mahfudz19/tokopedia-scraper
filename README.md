@@ -100,4 +100,3 @@ Shopee memiliki sistem pertahanan *anti-bot* (Datadome) yang sangat ketat. Skrip
 
 ## 📝 Lisensi
 Proyek ini dibuat untuk tujuan pembelajaran dan portofolio Data Engineering. Pastikan untuk selalu mematuhi *Terms of Service* dari masing-masing situs web.
-```
