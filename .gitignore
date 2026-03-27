@@ -1,6 +1,7 @@
 # Environments
 venv/
 env/
+shopee_profile_uc
 .env
 
 # Cache & Compiled files
