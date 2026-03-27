@@ -1,4 +1,3 @@
-```markdown
 # 🤖 E-Commerce Scraper Bot (Tokopedia, Lazada, Shopee)
 
 Sebuah bot *web scraping* berbasis Python untuk mengekstrak data produk (nama, harga, lokasi, URL) dari tiga *marketplace* besar di Indonesia: **Tokopedia**, **Lazada**, dan **Shopee**. 
