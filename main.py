@@ -9,7 +9,7 @@ from src.scrapers.shopee.scraper_search import scrape_shopee_search
 from src.database import db
 
 
-async def process_from_file(filename: str, method: str) -> None:
+async def process_from_file(filename: str, method: str, show_head: bool) -> None:
     if not os.path.exists(filename):
         print(f"\n[!] Error: File '{filename}' tidak ditemukan.")
         return
@@ -33,7 +33,7 @@ async def process_from_file(filename: str, method: str) -> None:
         elif method == "lazada":
             await scrape_lazada_tag(keyword)
         elif method == "shopee":
-            await scrape_shopee_search(keyword)
+            await scrape_shopee_search(keyword, show_head)
 
         if index < len(keywords):
             print(f"[*] Jeda 2 detik sebelum keyword berikutnya...")
@@ -42,25 +42,22 @@ async def process_from_file(filename: str, method: str) -> None:
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Multi-Marketplace Scraper CLI")
+    parser.add_argument("-k", "--keyword", type=str, help="Satu keyword spesifik")
     parser.add_argument(
-        "-k", "--keyword", type=str, help="Satu keyword spesifik (contoh: tenda)"
+        "-f", "--file", type=str, default="keywords.txt", help="File target"
     )
-    parser.add_argument(
-        "-f",
-        "--file",
-        type=str,
-        default="keywords.txt",
-        help="File target (default: keywords.txt)",
-    )
-
-    # PERBAIKAN DI SINI: Menambahkan "lazada" ke dalam daftar choices
     parser.add_argument(
         "-m",
         "--method",
         type=str,
         choices=["tokopedia", "shopee", "lazada"],
         default="shopee",
-        help="Metode scraping (Default: tokopedia)",
+        help="Metode scraping",
+    )
+    parser.add_argument(
+        "--head",
+        action="store_true",
+        help="Tampilkan UI browser (Mode Headful) untuk solve CAPTCHA/Login",
     )
 
     args = parser.parse_args()
@@ -78,10 +75,10 @@ async def main() -> None:
             elif args.method == "lazada":
                 await scrape_lazada_tag(args.keyword)
             elif args.method == "shopee":
-                await scrape_shopee_search(args.keyword)
+                await scrape_shopee_search(args.keyword, args.head)
         else:
             print(f"[*] Mode Batch. Membaca dari file: {args.file}")
-            await process_from_file(args.file, args.method)
+            await process_from_file(args.file, args.method, args.head)
     finally:
         db.close()
 

@@ -135,17 +135,45 @@ def save_page_as_mhtml_sync(
         print(f"[!] Gagal menyimpan MHTML: {e}")
 
 
-def run_shopee_selenium(keyword: str) -> None:
-    print("--- Step 1: Membuka Browser dengan Undetected-Chromedriver ---")
+def run_shopee_selenium(keyword: str, show_head: bool) -> None:
+    mode_text = "HEADFUL (UI Terbuka)" if show_head else "HEADLESS (Background)"
+    print(
+        f"--- Step 1: Membuka Browser dengan Undetected-Chromedriver [{mode_text}] ---"
+    )
 
     options = uc.ChromeOptions()
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_argument("--start-maximized")
 
+    # ==========================================
+    # --- TAMBAHAN OPTIMASI KHUSUS HEADLESS ---
+    # ==========================================
+    if not show_head:
+        # 1. Gunakan engine Headless terbaru dari Chrome (sangat sulit dideteksi WAF)
+        options.add_argument("--headless=new")
+
+        # 2. Paksa ukuran layar agar tidak terdeteksi sebagai bot (0x0)
+        options.add_argument("--window-size=1920,1080")
+
+        # 3. Timpa User-Agent untuk menghapus jejak "HeadlessChrome"
+        options.add_argument(
+            "--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+    # ==========================================
+
     user_data_dir = "./shopee_profile_uc"
 
-    print("[*] Meluncurkan browser Chrome murni (Binary Patched)...")
-    driver = uc.Chrome(options=options, user_data_dir=user_data_dir, version_main=146)
+    print("[*] Meluncurkan browser Chrome murni...")
+
+    # IMPLEMENTASI MODE HEADLESS PADA UNDETECTED-CHROMEDRIVER
+    # PENTING: Kita set headless=False di sini karena WAF akan mendeteksi headless lama bawaan UC.
+    # Kita bergantung pada argumen "--headless=new" yang sudah kita suntikkan di `options` di atas.
+    driver = uc.Chrome(
+        options=options,
+        user_data_dir=user_data_dir,
+        headless=False,  # <--- UBAH INI JADI FALSE!
+        version_main=146,
+    )
 
     print("[*] Membuka beranda Shopee untuk injeksi pengaturan...")
     driver.get("https://shopee.co.id")
@@ -160,7 +188,6 @@ def run_shopee_selenium(keyword: str) -> None:
     print(f"\n[*] Membuka link pencarian Shopee: {url}")
     driver.get(url)
 
-    # --- LOGIKA DETEKSI REDIRECT SPA ---
     print("\n[*] Menunggu dan memantau perubahan URL (SPA Redirect)...")
     blacklist = [
         "/login",
@@ -181,24 +208,39 @@ def run_shopee_selenium(keyword: str) -> None:
             break
         time.sleep(1)
 
-    # --- BLOK INTERVENSI MANUAL ---
+    # 3. LOGIKA KEPUTUSAN (HEADLESS VS HEADFUL)
     if is_redirected:
         print("\n[-] TERDETEKSI REDIRECT KE CAPTCHA / LOGIN!")
-        while True:
-            input(
-                "\n[!] TINDAKAN DIBUTUHKAN:"
-                "\n    1. Selesaikan puzzle CAPTCHA atau Login secara manual di browser."
-                "\n    2. Setelah berhasil lolos, tekan ENTER di sini untuk melanjutkan..."
-            )
-            print("\n[*] Mengecek kembali status URL...")
-            current_url_clean = driver.current_url.lower().split("?")[0]
-            if any(word in current_url_clean for word in blacklist):
-                print(
-                    f"[-] GAGAL: Anda masih terdeteksi di halaman pemblokiran (URL: {driver.current_url})."
+
+        if not show_head:
+            # JIKA HEADLESS: Langsung Menyerah & Beri Instruksi
+            print("    [!] Bot sedang berjalan di mode HEADLESS.")
+            print("    [!] Tidak bisa menyelesaikan CAPTCHA secara otomatis.")
+            print("    [!] TINDAKAN: Skrip dihentikan untuk keamanan profil.")
+            print("\n=======================================================")
+            print("💡 SOLUSI: Jalankan ulang perintah dengan tambahan flag --head")
+            print(f'   Contoh: python main.py -k "{keyword}" -m shopee --head')
+            print("=======================================================\n")
+            driver.quit()
+            return  # Langsung keluar dari fungsi, jangan lanjut scraping
+
+        else:
+            # JIKA HEADFUL (--head): Tahan terminal, tunggu user bertindak
+            while True:
+                input(
+                    "\n[!] TINDAKAN DIBUTUHKAN:\n"
+                    "    1. Selesaikan puzzle CAPTCHA atau Login secara manual di browser.\n"
+                    "    2. Setelah berhasil lolos, tekan ENTER di sini untuk melanjutkan..."
                 )
-            else:
-                print("[✓] BERHASIL! Anda telah terverifikasi.")
-                break
+                print("\n[*] Mengecek kembali status URL...")
+                current_url_clean = driver.current_url.lower().split("?")[0]
+                if any(word in current_url_clean for word in blacklist):
+                    print(
+                        f"[-] GAGAL: Anda masih terdeteksi di halaman pemblokiran (URL: {driver.current_url})."
+                    )
+                else:
+                    print("[✓] BERHASIL! Anda telah terverifikasi.")
+                    break
     else:
         print(
             "\n[✓] AMAN! Halaman berhasil dimuat tanpa redirect ke halaman pemblokiran."
@@ -245,5 +287,5 @@ def run_shopee_selenium(keyword: str) -> None:
     driver.quit()
 
 
-async def scrape_shopee_search(keyword: str) -> None:
-    await asyncio.to_thread(run_shopee_selenium, keyword)
+async def scrape_shopee_search(keyword: str, show_head: bool = False) -> None:
+    await asyncio.to_thread(run_shopee_selenium, keyword, show_head)
