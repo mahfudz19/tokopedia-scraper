@@ -53,9 +53,9 @@ async def process_from_file(filename: str, method: str, show_head: bool) -> None
         try:
             # Jalankan Scraper
             if method == "tokopedia":
-                await scrape_find_page(keyword)
+                await scrape_find_page(keyword, show_head)
             elif method == "lazada":
-                await scrape_lazada_tag(keyword)
+                await scrape_lazada_tag(keyword, show_head)
             elif method == "shopee":
                 await scrape_shopee_search(keyword, show_head)
 
@@ -122,9 +122,9 @@ async def main() -> None:
         if args.keyword:
             print(f"[*] Menjalankan mode Single Keyword: '{args.keyword}'")
             if args.method == "tokopedia":
-                await scrape_find_page(args.keyword)
+                await scrape_find_page(args.keyword, args.head)
             elif args.method == "lazada":
-                await scrape_lazada_tag(args.keyword)
+                await scrape_lazada_tag(args.keyword, args.head)
             elif args.method == "shopee":
                 await scrape_shopee_search(args.keyword, args.head)
         else:

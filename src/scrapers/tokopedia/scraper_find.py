@@ -84,9 +84,17 @@ async def extract_data(page: Page) -> List[Dict[str, Any]]:
     return extracted_data
 
 
-async def scrape_find_page(keyword: str) -> None:
+async def scrape_find_page(keyword: str, show_head: bool = False) -> None:
+    mode_text = "HEADFUL (UI Terbuka)" if show_head else "HEADLESS (Background)"
+    print(f"--- Step 1: Membuka Browser Tokopedia [{mode_text}] ---")
+
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(
+            headless=not show_head,
+            channel="chrome",
+            ignore_default_args=["--enable-automation"],
+            args=["--disable-blink-features=AutomationControlled"],
+        )
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
         )
