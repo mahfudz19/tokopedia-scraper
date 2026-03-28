@@ -222,8 +222,7 @@ def run_shopee_selenium(keyword: str, show_head: bool) -> None:
             print(f'   Contoh: python main.py -k "{keyword}" -m shopee --head')
             print("=======================================================\n")
             driver.quit()
-            return  # Langsung keluar dari fungsi, jangan lanjut scraping
-
+            raise RuntimeError("CAPTCHA_BLOCK")
         else:
             # JIKA HEADFUL (--head): Tahan terminal, tunggu user bertindak
             while True:

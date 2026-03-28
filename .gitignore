@@ -3,6 +3,7 @@ venv/
 env/
 shopee_profile_uc
 .env
+completed_shopee.txt
 
 # Cache & Compiled files
 __pycache__/

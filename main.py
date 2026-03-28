@@ -21,21 +21,72 @@ async def process_from_file(filename: str, method: str, show_head: bool) -> None
         print(f"\n[!] File '{filename}' kosong.")
         return
 
+    completed_file = f"completed_{method}.txt"
+    completed_keywords = set()
+
+    # Baca keyword apa saja yang sudah sukses di masa lalu
+    if os.path.exists(completed_file):
+        with open(completed_file, "r", encoding="utf-8") as f:
+            completed_keywords = set(
+                line.strip() for line in f.readlines() if line.strip()
+            )
+
+    # Saring keyword, hanya ambil yang BELUM ada di file completed
+    pending_keywords = [k for k in keywords if k not in completed_keywords]
+
+    if not pending_keywords:
+        print(
+            f"\n[✓] Luar biasa! Semua target di '{filename}' sudah selesai dikerjakan sebelumnya."
+        )
+        return
+
+    print(f"\n[*] Ditemukan {len(keywords)} target total.")
     print(
-        f"\n[*] Ditemukan {len(keywords)} target di '{filename}'. Memulai proses batch..."
+        f"[*] {len(completed_keywords)} sudah selesai. Menyisakan {len(pending_keywords)} target untuk diproses..."
     )
 
-    for index, keyword in enumerate(keywords, start=1):
-        print(f"\n{'-'*30}\nMemproses [{index}/{len(keywords)}]: {keyword}\n{'-'*30}")
+    for index, keyword in enumerate(pending_keywords, start=1):
+        print(
+            f"\n{'-'*30}\nMemproses [{index}/{len(pending_keywords)}]: {keyword}\n{'-'*30}"
+        )
 
-        if method == "tokopedia":
-            await scrape_find_page(keyword)
-        elif method == "lazada":
-            await scrape_lazada_tag(keyword)
-        elif method == "shopee":
-            await scrape_shopee_search(keyword, show_head)
+        try:
+            # Jalankan Scraper
+            if method == "tokopedia":
+                await scrape_find_page(keyword)
+            elif method == "lazada":
+                await scrape_lazada_tag(keyword)
+            elif method == "shopee":
+                await scrape_shopee_search(keyword, show_head)
 
-        if index < len(keywords):
+            # Jika berhasil (tidak ada error), catat keyword ini ke dalam daftar "SUKSES"
+            with open(completed_file, "a", encoding="utf-8") as f:
+                f.write(keyword + "\n")
+
+        # ==========================================
+        # --- BEHAVIOR 1: CIRCUIT BREAKER CATCHER ---
+        # ==========================================
+        except RuntimeError as e:
+            if str(e) == "CAPTCHA_BLOCK":
+                print("\n" + "!" * 50)
+                print("[!!!] CIRCUIT BREAKER AKTIF: PROSES BATCH DIHENTIKAN [!!!]")
+                print("!" * 50)
+                print(
+                    "Alasan   : Datadome mendeteksi bot dan meminta penyelesaian CAPTCHA."
+                )
+                print(
+                    "Tindakan : Skrip dihentikan seketika untuk mencegah Banned IP/Profil."
+                )
+                print(
+                    f"Status   : Sisa {len(pending_keywords) - index + 1} keyword aman tersimpan di antrean."
+                )
+                print("!" * 50 + "\n")
+                break  # Hentikan paksa loop FOR ini, jangan lanjut ke keyword berikutnya!
+            else:
+                # Jika error lain, biarkan lanjut
+                print(f"[!] Terjadi error tidak terduga: {e}")
+
+        if index < len(pending_keywords):
             print(f"[*] Jeda 2 detik sebelum keyword berikutnya...")
             await asyncio.sleep(2)
 
