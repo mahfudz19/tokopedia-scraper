@@ -86,7 +86,7 @@ async def extract_data(page: Page) -> List[Dict[str, Any]]:
 
 async def scrape_find_page(keyword: str, show_head: bool = False) -> None:
     mode_text = "HEADFUL (UI Terbuka)" if show_head else "HEADLESS (Background)"
-    print(f"--- Step 1: Membuka Browser Tokopedia [{mode_text}] ---")
+    print(f"--- Membuka Browser Tokopedia [{mode_text}] ---")
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(
@@ -117,8 +117,9 @@ async def scrape_find_page(keyword: str, show_head: bool = False) -> None:
         pagination_locator = await scroll_to_bottom(page, max_attempts=15)
 
         # 2. Extract Pagination
+        pagination_locator = page.locator("nav[aria-label='Laman navigasi'], div[data-testid='divSRPPagination']")
         active_page_number, next_url = await extract_pagination_info(pagination_locator)
-
+        
         # 3. Extract Data Mentah
         data: List[Dict[str, Any]] = await extract_data(page)
 

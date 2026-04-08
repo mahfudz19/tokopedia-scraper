@@ -37,7 +37,7 @@ async def save_data_to_json(
 
     file_path = f"{folder_path}/data.json"
     with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+        json.dump(data, f, ensure_ascii=False, indent=4, default=str)
 
     print(f"[v] Berhasil menyimpan {len(data)} produk ke JSON: {file_path}")
 

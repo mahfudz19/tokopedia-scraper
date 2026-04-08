@@ -138,7 +138,7 @@ def save_page_as_mhtml_sync(
 def run_shopee_selenium(keyword: str, show_head: bool) -> None:
     mode_text = "HEADFUL (UI Terbuka)" if show_head else "HEADLESS (Background)"
     print(
-        f"--- Step 1: Membuka Browser dengan Undetected-Chromedriver [{mode_text}] ---"
+        f"--- Membuka Browser dengan Undetected-Chromedriver [{mode_text}] ---"
     )
 
     options = uc.ChromeOptions()

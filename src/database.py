@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from pymongo import MongoClient, UpdateOne
 from pymongo.collection import Collection
 from pymongo.database import Database as MongoDatabase
@@ -27,16 +28,30 @@ class Database:
     def insert_products(
         self, products_list: List[Dict[str, Any]], source_marketplace: str
     ) -> None:
-        """Melakukan Upsert data produk ke MongoDB."""
+        """Melakukan Upsert data produk ke MongoDB dengan Timestamp."""
         if not products_list:
             print(f"[-] Tidak ada data dari {source_marketplace} untuk disimpan ke DB.")
             return
 
         operations: List[UpdateOne] = []
+
+        # 2. Ambil waktu saat ini berstandar UTC
+        current_time = datetime.now(timezone.utc)
+
         for product in products_list:
             product["marketplace"] = source_marketplace
+
+            # 3. Selalu perbarui updatedAt setiap kali produk ini di-scrape ulang
+            product["updatedAt"] = current_time
+
             op = UpdateOne(
-                filter={"url": product["url"]}, update={"$set": product}, upsert=True
+                filter={"url": product["url"]},
+                update={
+                    "$set": product,
+                    # 4. createdAt HANYA diisi jika produk ini benar-benar baru di DB
+                    "$setOnInsert": {"createdAt": current_time},
+                },
+                upsert=True,
             )
             operations.append(op)
 
