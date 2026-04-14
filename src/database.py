@@ -23,7 +23,12 @@ class Database:
 
         # Membuat unique index
         self.products_collection.create_index("url", unique=True)
-        print("✓ Terhubung ke Database MongoDB: scraper (Index unik pada 'url' aktif)")
+        self.products_collection.create_index("category")
+        self.products_collection.create_index("marketplace_product_id", unique=True)
+        
+        # Compound index untuk query yang sering digunakan bersamaan
+        self.products_collection.create_index([("category", 1), ("marketplace", 1)])
+        print("✓ Terhubung ke Database MongoDB: scraper (Index aktif: url, category, marketplace_product_id)")
 
     def insert_products(
         self, products_list: List[Dict[str, Any]], source_marketplace: str

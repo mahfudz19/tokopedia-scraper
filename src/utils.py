@@ -73,7 +73,7 @@ def upload_image_to_s3(image_url: str) -> str:
         )
         
         # 6. Konstruksi URL S3 hasil upload
-        s3_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{file_name}"
+        s3_url = f"{file_name}"
         return s3_url
         
     except (BotoCoreError, ClientError) as e:
