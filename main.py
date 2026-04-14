@@ -1,6 +1,8 @@
 import asyncio
 import argparse
 import os
+import sys
+import re
 from typing import List
 
 from src.scrapers.tokopedia.scraper_find import scrape_find_page
@@ -8,8 +10,7 @@ from src.scrapers.lazada.scraper_tag import scrape_lazada_tag
 from src.scrapers.shopee.scraper_search import scrape_shopee_search
 from src.database import db
 
-
-async def process_from_file(filename: str, method: str, show_head: bool) -> None:
+async def process_from_file(filename: str, method: str, head_limit: float) -> None:
     if not os.path.exists(filename):
         print(f"\n[!] Error: File '{filename}' tidak ditemukan.")
         return
@@ -40,58 +41,55 @@ async def process_from_file(filename: str, method: str, show_head: bool) -> None
         )
         return
 
-    print(f"\n[*] Ditemukan {len(keywords)} target total.")
-    print(
-        f"[*] {len(completed_keywords)} sudah selesai. Menyisakan {len(pending_keywords)} target untuk diproses..."
-    )
+    print(f"\n[*] Menemukan {len(pending_keywords)} keyword yang belum diproses.")
 
-    for index, keyword in enumerate(pending_keywords, start=1):
-        print(
-            f"\n{'-'*30}\nMemproses [{index}/{len(pending_keywords)}]: {keyword}\n{'-'*30}"
-        )
+    for idx, kw in enumerate(pending_keywords):
+        print(f"\n========================================")
+        print(f"[{idx+1}/{len(pending_keywords)}] Memproses keyword: '{kw}'")
+        print(f"========================================")
 
-        try:
-            # Jalankan Scraper
-            if method == "tokopedia":
-                await scrape_find_page(keyword, show_head)
-            elif method == "lazada":
-                await scrape_lazada_tag(keyword, show_head)
-            elif method == "shopee":
-                await scrape_shopee_search(keyword, show_head)
+        # LOGIKA FLAG DINAMIS: True jika indeks saat ini di bawah limit head
+        show_head = idx < head_limit
 
-            # Jika berhasil (tidak ada error), catat keyword ini ke dalam daftar "SUKSES"
-            with open(completed_file, "a", encoding="utf-8") as f:
-                f.write(keyword + "\n")
+        if method == "tokopedia":
+            await scrape_find_page(kw, show_head)
+        elif method == "lazada":
+            await scrape_lazada_tag(kw, show_head)
+        elif method == "shopee":
+            await scrape_shopee_search(kw, show_head)
 
-        # ==========================================
-        # --- BEHAVIOR 1: CIRCUIT BREAKER CATCHER ---
-        # ==========================================
-        except RuntimeError as e:
-            if str(e) == "CAPTCHA_BLOCK":
-                print("\n" + "!" * 50)
-                print("[!!!] CIRCUIT BREAKER AKTIF: PROSES BATCH DIHENTIKAN [!!!]")
-                print("!" * 50)
-                print(
-                    "Alasan   : Datadome mendeteksi bot dan meminta penyelesaian CAPTCHA."
-                )
-                print(
-                    "Tindakan : Skrip dihentikan seketika untuk mencegah Banned IP/Profil."
-                )
-                print(
-                    f"Status   : Sisa {len(pending_keywords) - index + 1} keyword aman tersimpan di antrean."
-                )
-                print("!" * 50 + "\n")
-                break  # Hentikan paksa loop FOR ini, jangan lanjut ke keyword berikutnya!
-            else:
-                # Jika error lain, biarkan lanjut
-                print(f"[!] Terjadi error tidak terduga: {e}")
+        # Catat ke file completed setelah berhasil (untuk resume jika crash)
+        with open(completed_file, "a", encoding="utf-8") as f:
+            f.write(kw + "\n")
 
-        if index < len(pending_keywords):
-            print(f"[*] Jeda 2 detik sebelum keyword berikutnya...")
+        # Jeda antar keyword agar tidak terlalu dicurigai sebagai DDoS
+        if idx < len(pending_keywords) - 1:
+            print("\n[*] Jeda 2 detik sebelum keyword berikutnya...")
             await asyncio.sleep(2)
 
 
 async def main() -> None:
+    # -------------------------------------------------------------
+    # CUSTOM ARGUMENT PARSING UNTUK FLAG DINAMIS (--head-X)
+    # -------------------------------------------------------------
+    head_limit = 0
+    args_to_parse = []
+    
+    for arg in sys.argv:
+        if arg == "--head":
+            # Jika hanya '--head', maka buka UI untuk SEMUA iterasi
+            head_limit = float('inf')
+        elif re.match(r"--head-(\d+)", arg):
+            # Jika '--head-X', maka buka UI hanya untuk X iterasi pertama
+            match = re.match(r"--head-(\d+)", arg)
+            head_limit = int(match.group(1))
+        else:
+            args_to_parse.append(arg)
+            
+    # Timpa sys.argv agar argparse tidak error karena ada argumen yang tidak dikenal
+    sys.argv = args_to_parse
+    # -------------------------------------------------------------
+
     parser = argparse.ArgumentParser(description="Multi-Marketplace Scraper CLI")
     parser.add_argument("-k", "--keyword", type=str, help="Satu keyword spesifik")
     parser.add_argument(
@@ -105,11 +103,9 @@ async def main() -> None:
         default="shopee",
         help="Metode scraping",
     )
-    parser.add_argument(
-        "--head",
-        action="store_true",
-        help="Tampilkan UI browser (Mode Headful) untuk solve CAPTCHA/Login",
-    )
+    
+    # Keterangan manual karena argumen '--head' sudah kita bypass di atas
+    parser.epilog = "Contoh Flag UI Tambahan:\n  --head        Buka browser (UI) untuk semua antrean\n  --head-N      Buka browser (UI) HANYA untuk N antrean pertama (misal: --head-2)"
 
     args = parser.parse_args()
 
@@ -121,17 +117,24 @@ async def main() -> None:
     try:
         if args.keyword:
             print(f"[*] Menjalankan mode Single Keyword: '{args.keyword}'")
+            # Untuk single keyword, show_head bernilai True asalkan limit > 0
+            show_head = head_limit > 0 
             if args.method == "tokopedia":
-                await scrape_find_page(args.keyword, args.head)
+                await scrape_find_page(args.keyword, show_head)
             elif args.method == "lazada":
-                await scrape_lazada_tag(args.keyword, args.head)
+                await scrape_lazada_tag(args.keyword, show_head)
             elif args.method == "shopee":
-                await scrape_shopee_search(args.keyword, args.head)
+                await scrape_shopee_search(args.keyword, show_head)
         else:
-            print(f"[*] Mode Batch. Membaca dari file: {args.file}")
-            await process_from_file(args.file, args.method, args.head)
+            print(f"[*] Menjalankan mode File: {args.file}")
+            await process_from_file(args.file, args.method, head_limit)
+
+    except KeyboardInterrupt:
+        print("\n[!] Proses dihentikan paksa oleh pengguna (Ctrl+C).")
+    except Exception as e:
+        print(f"\n[!] Terjadi kesalahan tak terduga: {e}")
     finally:
-        db.close()
+        print("✓ Koneksi database ditutup.")
 
 
 if __name__ == "__main__":
