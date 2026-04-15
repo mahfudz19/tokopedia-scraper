@@ -1,6 +1,6 @@
 import json
 import os
-import uuid
+import hashlib
 import requests
 import boto3
 
@@ -12,26 +12,12 @@ from datetime import datetime
 def upload_image_to_s3(image_url: str) -> str:
     """
     Mendownload gambar dari URL dan mengunggahnya ke AWS S3.
-    Mengembalikan URL gambar di S3 jika berhasil, atau None jika gagal.
+    Mencegah duplikasi dengan menggunakan MD5 Hash dari URL asli.
     """
     if not image_url:
         return None
 
-    # 1. Coba download gambar dari URL target
-    try:
-        # Menambahkan User-Agent penting agar request tidak diblokir oleh Tokopedia/Shopee
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-        response = requests.get(image_url, headers=headers, stream=True, timeout=15)
-        
-        # Raise exception jika status code bukan 200 (OK)
-        response.raise_for_status() 
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Gagal mendownload gambar: {e}")
-        return None
-
-    # 2. Ambil konfigurasi AWS dari environment variables
+    # 1. Ambil konfigurasi AWS
     bucket_name = os.getenv('AWS_BUCKET_NAME')
     region = os.getenv('AWS_BUCKET_REGION')
     access_key = os.getenv('AWS_ACCESS_KEY')
@@ -41,7 +27,7 @@ def upload_image_to_s3(image_url: str) -> str:
         print("❌ Konfigurasi AWS S3 tidak lengkap di file .env")
         return None
 
-    # 3. Setup client AWS S3
+    # 2. Setup client AWS S3
     s3_client = boto3.client(
         's3',
         region_name=region,
@@ -49,31 +35,51 @@ def upload_image_to_s3(image_url: str) -> str:
         aws_secret_access_key=secret_key
     )
 
-    # 4. Ekstrak Content-Type untuk ekstensi file yang valid (default ke jpg)
-    content_type = response.headers.get('Content-Type', 'image/jpeg')
-    ext = content_type.split('/')[-1] if '/' in content_type else 'jpg'
-    if ext == 'jpeg': 
+    # 3. Buat Nama File Deterministik menggunakan MD5 Hash dari URL asli
+    # Ekstrak ekstensi kasar (default ke jpg jika sulit ditebak)
+    ext = image_url.split('.')[-1].split('?')[0]
+    if ext.lower() not in ['jpg', 'jpeg', 'png', 'webp']:
         ext = 'jpg'
         
-    # Generate nama file unik, misalnya: products/{year}/{mounth}/{date}/a1b2c3d4.jpg
-    now = datetime.now()
-    year = now.strftime("%Y")
-    month = now.strftime("%m")
-    date = now.strftime("%d")
-    file_name = f"products/{year}/{month}/{date}/{uuid.uuid4().hex}.{ext}"
+    url_hash = hashlib.md5(image_url.encode('utf-8')).hexdigest()
+    file_name = f"products/{url_hash}.{ext}"
+    s3_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{file_name}"
 
-    # 5. Upload ke AWS S3
+    # =========================================================
+    # OPTIMASI SUPER CEPAT: Cek apakah file sudah ada di S3
+    # =========================================================
+    try:
+        # head_object sangat ringan dan cepat, hanya mengecek metadata file
+        s3_client.head_object(Bucket=bucket_name, Key=file_name)
+        # Jika tidak error, berarti file sudah ada! Langsung kembalikan URL S3
+        return s3_url
+    except ClientError as e:
+        # Error 404 berarti file belum ada (Not Found), kita lanjut download & upload
+        if e.response['Error']['Code'] != '404':
+            print(f"⚠️ Peringatan saat mengecek S3: {e}")
+            # Lanjut saja jika error lain
+
+    # 4. Download gambar jika belum ada di S3
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        response = requests.get(image_url, headers=headers, stream=True, timeout=15)
+        response.raise_for_status() 
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Gagal mendownload gambar: {e}")
+        return None
+
+    content_type = response.headers.get('Content-Type', 'image/jpeg')
+
+    # 5. Upload ke AWS S3 (Jika ada file lama yang sama secara kebetulan, ini akan Overwrite)
     try:
         s3_client.put_object(
             Bucket=bucket_name,
             Key=file_name,
             Body=response.content,
             ContentType=content_type,
-            # ACL='public-read' # Buka komentar (uncomment) baris ini jika bucket Anda memblokir public access dan Anda ingin gambar ini public
         )
-        
-        # 6. Konstruksi URL S3 hasil upload
-        s3_url = f"{file_name}"
         return s3_url
         
     except (BotoCoreError, ClientError) as e:
