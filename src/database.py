@@ -1,4 +1,5 @@
 import os
+import dns.resolver
 from datetime import datetime, timezone
 from pymongo import MongoClient, UpdateOne
 from pymongo.collection import Collection
@@ -8,6 +9,8 @@ from typing import List, Dict, Any, Optional
 
 load_dotenv()
 
+dns.resolver.default_resolver = dns.resolver.Resolver(configure=False)
+dns.resolver.default_resolver.nameservers = ['8.8.8.8', '8.8.4.4', '1.1.1.1']
 
 class Database:
     def __init__(self) -> None:
@@ -24,7 +27,7 @@ class Database:
         # Membuat unique index
         self.products_collection.create_index("url", unique=True)
         self.products_collection.create_index("category")
-        self.products_collection.create_index("marketplace_product_id", unique=True)
+        self.products_collection.create_index([("marketplace", 1), ("marketplace_product_id", 1)], unique=True)
         
         # Compound index untuk query yang sering digunakan bersamaan
         self.products_collection.create_index([("category", 1), ("marketplace", 1)])
@@ -71,6 +74,5 @@ class Database:
     def close(self) -> None:
         self.client.close()
         print("✓ Koneksi database ditutup.")
-
 
 db = Database()

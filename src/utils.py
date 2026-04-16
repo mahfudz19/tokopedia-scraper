@@ -5,9 +5,48 @@ import requests
 import boto3
 
 from typing import List, Dict, Any
-from playwright.async_api import Page, Locator
+from playwright.async_api import Page
+from botocore.exceptions import  ClientError
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from botocore.exceptions import BotoCoreError, ClientError
-from datetime import datetime
+
+# =========================================================================
+# OPTIMASI 1: GLOBAL SESSION & AUTO-RETRY
+# Mencegah ConnectionResetError(54) dengan mendaur ulang koneksi (Keep-Alive)
+# dan otomatis mencoba ulang jika server memutus koneksi tiba-tiba.
+# =========================================================================
+http_session = requests.Session()
+retry_strategy = Retry(
+    total=3,                # Maksimal coba 3 kali jika gagal
+    backoff_factor=1,       # Jeda eksponensial: 1 detik, 2 detik, 4 detik...
+    status_forcelist=[429, 500, 502, 503, 504], # Coba lagi jika server sibuk/error
+    allowed_methods=["HEAD", "GET", "OPTIONS"]  # Berlaku untuk method ini
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+http_session.mount("http://", adapter)
+http_session.mount("https://", adapter)
+
+# Simpan S3 Client secara global agar tidak buka-tutup koneksi AWS terus menerus
+s3_client_global = None
+
+def get_s3_client():
+    global s3_client_global
+    if s3_client_global is None:
+        bucket_name = os.getenv('AWS_BUCKET_NAME')
+        region = os.getenv('AWS_BUCKET_REGION')
+        access_key = os.getenv('AWS_ACCESS_KEY')
+        secret_key = os.getenv('AWS_SECRET_KEY')
+
+        if all([bucket_name, region, access_key, secret_key]):
+            s3_client_global = boto3.client(
+                's3',
+                region_name=region,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key
+            )
+    return s3_client_global
+
 
 def upload_image_to_s3(image_url: str) -> str:
     """
@@ -17,63 +56,48 @@ def upload_image_to_s3(image_url: str) -> str:
     if not image_url:
         return None
 
-    # 1. Ambil konfigurasi AWS
-    bucket_name = os.getenv('AWS_BUCKET_NAME')
-    region = os.getenv('AWS_BUCKET_REGION')
-    access_key = os.getenv('AWS_ACCESS_KEY')
-    secret_key = os.getenv('AWS_SECRET_KEY')
-
-    if not all([bucket_name, region, access_key, secret_key]):
-        print("❌ Konfigurasi AWS S3 tidak lengkap di file .env")
-        return None
-
-    # 2. Setup client AWS S3
-    s3_client = boto3.client(
-        's3',
-        region_name=region,
-        aws_access_key_id=access_key,
-        aws_secret_access_key=secret_key
-    )
-
-    # 3. Buat Nama File Deterministik menggunakan MD5 Hash dari URL asli
-    # Ekstrak ekstensi kasar (default ke jpg jika sulit ditebak)
-    ext = image_url.split('.')[-1].split('?')[0]
-    if ext.lower() not in ['jpg', 'jpeg', 'png', 'webp']:
-        ext = 'jpg'
-        
-    url_hash = hashlib.md5(image_url.encode('utf-8')).hexdigest()
-    file_name = f"products/{url_hash}.{ext}"
-    s3_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{file_name}"
-
-    # =========================================================
-    # OPTIMASI SUPER CEPAT: Cek apakah file sudah ada di S3
-    # =========================================================
+    # Bungkus seluruh fungsi dalam Try-Except agar error fatal jaringan (seperti Error 54)
+    # tidak membuat bot / main.py mati (crash).
     try:
-        # head_object sangat ringan dan cepat, hanya mengecek metadata file
-        s3_client.head_object(Bucket=bucket_name, Key=file_name)
-        # Jika tidak error, berarti file sudah ada! Langsung kembalikan URL S3
-        return s3_url
-    except ClientError as e:
-        # Error 404 berarti file belum ada (Not Found), kita lanjut download & upload
-        if e.response['Error']['Code'] != '404':
-            print(f"⚠️ Peringatan saat mengecek S3: {e}")
-            # Lanjut saja jika error lain
+        bucket_name = os.getenv('AWS_BUCKET_NAME')
+        region = os.getenv('AWS_BUCKET_REGION')
+        s3_client = get_s3_client()
 
-    # 4. Download gambar jika belum ada di S3
-    try:
+        if not s3_client:
+            print("❌ Konfigurasi AWS S3 tidak lengkap di file .env")
+            return None
+
+        # 1. Buat Nama File Deterministik menggunakan MD5 Hash dari URL asli
+        ext = image_url.split('.')[-1].split('?')[0]
+        if ext.lower() not in ['jpg', 'jpeg', 'png', 'webp']:
+            ext = 'jpg'
+            
+        url_hash = hashlib.md5(image_url.encode('utf-8')).hexdigest()
+        file_name = f"products/{url_hash}.{ext}"
+        s3_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{file_name}"
+
+        # 2. Cek apakah file sudah ada di S3 (Super Cepat)
+        try:
+            s3_client.head_object(Bucket=bucket_name, Key=file_name)
+            return s3_url # Langsung kembalikan URL jika gambar sudah ada
+        except ClientError as e:
+            if e.response['Error']['Code'] != '404':
+                pass # Lanjut download jika error lain
+
+        # 3. Download gambar menggunakan Global Session (Anti Connection Reset)
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            'Connection': 'keep-alive'
         }
-        response = requests.get(image_url, headers=headers, stream=True, timeout=15)
+        
+        # timeout=(connect timeout, read timeout)
+        response = http_session.get(image_url, headers=headers, stream=True, timeout=(5, 15))
         response.raise_for_status() 
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Gagal mendownload gambar: {e}")
-        return None
 
-    content_type = response.headers.get('Content-Type', 'image/jpeg')
+        content_type = response.headers.get('Content-Type', 'image/jpeg')
 
-    # 5. Upload ke AWS S3 (Jika ada file lama yang sama secara kebetulan, ini akan Overwrite)
-    try:
+        # 4. Upload ke AWS S3
         s3_client.put_object(
             Bucket=bucket_name,
             Key=file_name,
@@ -82,8 +106,13 @@ def upload_image_to_s3(image_url: str) -> str:
         )
         return s3_url
         
-    except (BotoCoreError, ClientError) as e:
-        print(f"❌ Gagal mengunggah ke S3: {e}")
+    except requests.exceptions.RequestException as e:
+        # Menangani khusus error download / Connection Reset
+        print(f"⚠️ Gagal download gambar (Jaringan terputus): {str(e)[:50]}...")
+        return None
+    except Exception as e:
+        # Menangani error tak terduga lainnya agar bot tidak crash
+        print(f"⚠️ Gagal memproses S3 untuk gambar ini: {str(e)[:50]}...")
         return None
 
 async def save_page_as_mhtml(
