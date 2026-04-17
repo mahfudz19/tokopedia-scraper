@@ -74,7 +74,7 @@ def upload_image_to_s3(image_url: str) -> str:
             
         url_hash = hashlib.md5(image_url.encode('utf-8')).hexdigest()
         file_name = f"products/{url_hash}.{ext}"
-        s3_url = f"https://{bucket_name}.s3.{region}.amazonaws.com/{file_name}"
+        s3_url = file_name
 
         # 2. Cek apakah file sudah ada di S3 (Super Cepat)
         try:

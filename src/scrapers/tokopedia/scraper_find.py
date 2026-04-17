@@ -40,30 +40,43 @@ async def extract_pagination_info(
 
 
 async def extract_data(page: Page, keyword: str) -> List[Dict[str, Any]]:
-    """Mengekstrak data komprehensif dari DOM untuk Price Comparison."""
+    """Mengekstrak data komprehensif dari DOM Tokopedia versi terbaru."""
     print(f"\n[*] Mengekstrak data produk untuk keyword: '{keyword}'...")
 
-    # Kita passing parameter 'keyword' dari Python ke dalam JavaScript
     extracted_data: List[Dict[str, Any]] = await page.evaluate(
         r"""(searchKeyword) => {
         const results = [];
-        const cards = document.querySelectorAll('div[data-testid^="divFindProduct"]');
         
-        cards.forEach(card => {
-            const aTag = card.querySelector('a');
-            if (!aTag) return; 
-            
-            // 1. Identifikasi URL & ID (SANGAT URGENT)
-            const raw_url = aTag.href;
-            const clean_url = raw_url.split('?')[0]; // Buang parameter tracking
-            const marketplace_product_id = clean_url; // Jadikan clean_url sebagai ID Unik
-            
-            // 2. Ekstrak Image URL Mentah (SANGAT URGENT)
-            const imgTag = card.querySelector('img[alt="product-image"]');
-            const image_url_raw = imgTag ? (imgTag.src || imgTag.getAttribute('srcset')?.split(' ')[0]) : null;
+        // 1. Cari Container Utama yang stabil (data-testid jarang berubah)
+        const container = document.querySelector('div[data-testid="divSRPContentProducts"]');
+        if (!container) return results;
 
-            // Ambil semua teks dalam card untuk Heuristik
-            const textNodes = Array.from(card.querySelectorAll('*'))
+        // 2. Ambil semua link produk di dalamnya
+        const cards = container.querySelectorAll('a[href]');
+        
+        cards.forEach(aTag => {
+            const raw_url = aTag.href;
+            // Pastikan ini adalah link produk, bukan link promo/iklan banner
+            if (!raw_url || !raw_url.includes('tokopedia.com/')) return;
+            if (raw_url.includes('/promo') || raw_url.includes('/discovery')) return; 
+            
+            const clean_url = raw_url.split('?')[0]; 
+            const marketplace_product_id = clean_url; 
+            
+            // 3. Ekstrak Image URL
+            let image_url_raw = null;
+            // Mencari gambar dengan alt "product-image" (Sangat stabil)
+            const imgTag = aTag.querySelector('img[alt="product-image"]');
+            if (imgTag) {
+                let src = imgTag.src || imgTag.getAttribute('data-src') || imgTag.getAttribute('srcset')?.split(' ')[0];
+                // Tokopedia menggunakan svg zeus_v2 sebagai placeholder lazy-load. Abaikan jika belum terload.
+                if (src && !src.includes('zeus_v2')) {
+                    image_url_raw = src;
+                }
+            }
+
+            // 4. Kumpulkan Text Nodes untuk Heuristik
+            const textNodes = Array.from(aTag.querySelectorAll('*'))
                 .filter(el => el.children.length === 0 && el.textContent.trim().length > 0)
                 .map(el => el.textContent.trim());
             
@@ -75,13 +88,13 @@ async def extract_data(page: Page, keyword: str) -> List[Dict[str, Any]]:
             let shop = "Toko tidak diketahui";
             let location = "Lokasi tidak diketahui";
             
-            // 3. Ekstrak DISKON
+            // Ekstrak DISKON
             const discountMatch = textNodes.find(t => t.match(/^\d+%$/));
             if (discountMatch) {
                 discount_percent = parseInt(discountMatch.replace('%', '')) || 0;
             }
 
-            // 4. Ekstrak HARGA (Original & Diskon)
+            // Ekstrak HARGA
             const rpNodes = textNodes.filter(t => t.startsWith("Rp"));
             rpNodes.forEach(rp => {
                 const num = parseInt(rp.replace(/[^0-9]/g, ''));
@@ -91,60 +104,66 @@ async def extract_data(page: Page, keyword: str) -> List[Dict[str, Any]]:
             let price_rp = 0;
             let price_original = 0;
             if (prices.length > 0) {
-                price_original = Math.max(...prices); // Harga coret pasti yang paling tinggi
-                price_rp = Math.min(...prices);       // Harga bayar pasti yang paling rendah
+                price_original = Math.max(...prices); 
+                price_rp = Math.min(...prices);       
             }
 
-            // 5. Ekstrak NAMA PRODUK
-            // Heuristik: Teks panjang, bukan harga, bukan info terjual
-            const potentialTitles = textNodes.filter(t => t.length > 20 && !t.startsWith("Rp") && !t.toLowerCase().includes("terjual") && !t.toLowerCase().includes("hemat"));
+            // Ekstrak NAMA PRODUK
+            // Logika: Teks yang panjangnya lumayan, bukan harga, bukan jumlah terjual, dll.
+            const potentialTitles = textNodes.filter(t => 
+                t.length > 10 && 
+                !t.startsWith("Rp") && 
+                !t.toLowerCase().includes("terjual") && 
+                !t.toLowerCase().includes("hemat") && 
+                !t.toLowerCase().includes("cashback") && 
+                !t.match(/^[0-5]\.[0-9]$/)
+            );
             if (potentialTitles.length > 0) {
                 title = potentialTitles[0];
             }
 
-            // 6. Ekstrak RATING
-            const ratingImg = card.querySelector('img[alt="rating"]');
-            if (ratingImg && ratingImg.nextElementSibling) {
-                rating = parseFloat(ratingImg.nextElementSibling.textContent.trim()) || 0;
-            } else {
-                const ratingStr = textNodes.find(t => t.match(/^[0-5]\.[0-9]$/));
-                if(ratingStr) rating = parseFloat(ratingStr) || 0;
-            }
+            // Ekstrak RATING
+            const ratingStr = textNodes.find(t => t.match(/^[0-5]\.[0-9]$/));
+            if(ratingStr) rating = parseFloat(ratingStr) || 0;
 
-            // 7. Ekstrak TERJUAL
+            // Ekstrak TERJUAL
             const soldStr = textNodes.find(t => t.toLowerCase().includes("terjual"));
             if (soldStr) {
                 let s = soldStr.toLowerCase().replace("terjual", "").replace(/\+/g, "").trim();
                 if (s.includes("rb")) {
                     sold_count = parseInt(parseFloat(s.replace("rb", "").replace(",", ".")) * 1000);
+                } else if (s.includes("jt")) {
+                    sold_count = parseInt(parseFloat(s.replace("jt", "").replace(",", ".")) * 1000000);
                 } else {
                     sold_count = parseInt(s) || 0;
                 }
             }
 
-            // 8. Ekstrak TOKO & LOKASI
-            // Dari HTML Anda, Tokopedia sering pakai class 'flip' untuk info ini
-            const flipNodes = Array.from(card.querySelectorAll('span.flip')).map(el => el.textContent.trim());
+            // Ekstrak TOKO & LOKASI
+            // Tokopedia versi ini sering menaruh nama toko dan lokasi dengan class yg ada kata "flip"
+            const flipNodes = Array.from(aTag.querySelectorAll('span[class*="flip"]')).map(el => el.textContent.trim());
             if (flipNodes.length >= 2) {
                 shop = flipNodes[0];
                 location = flipNodes[1];
             } else if (flipNodes.length === 1) {
                 shop = flipNodes[0];
             } else {
-                if (textNodes.length >= 2) {
-                    location = textNodes[textNodes.length - 1];
-                    shop = textNodes[textNodes.length - 2];     
+                // Fallback Heuristik (Tebak dari posisi teks)
+                const locationCandidates = textNodes.filter(t => !t.startsWith("Rp") && !t.includes("terjual") && !t.includes("%") && t.length < 25);
+                if (locationCandidates.length >= 2) {
+                    location = locationCandidates[locationCandidates.length - 1];
+                    shop = locationCandidates[locationCandidates.length - 2];     
                 }
             }
             
-            // Simpan ke array jika data valid
-            if (price_rp > 0 && title !== "Nama tidak ditemukan") {
+            // Validasi & Simpan ke Array
+            if (price_rp > 0 && title !== "Nama tidak ditemukan" && shop !== "Toko tidak diketahui") {
                 results.push({ 
                     search_keyword: searchKeyword,
                     category: [searchKeyword],
                     marketplace_product_id: marketplace_product_id,
                     clean_url: clean_url,
-                    url: clean_url, // Backward compatibility UI
+                    url: clean_url, 
                     name: title, 
                     price_original: price_original,
                     price_rp: price_rp, 
@@ -153,7 +172,7 @@ async def extract_data(page: Page, keyword: str) -> List[Dict[str, Any]]:
                     sold_count: sold_count,
                     shop: shop, 
                     location: location, 
-                    image_url_raw: image_url_raw, // Disimpan sementara untuk di-upload Python
+                    image_url_raw: image_url_raw, 
                     marketplace: "Tokopedia",
                 });
             }
@@ -162,7 +181,6 @@ async def extract_data(page: Page, keyword: str) -> List[Dict[str, Any]]:
     }""", keyword
     )
     return extracted_data
-
 
 async def scrape_find_page(keyword: str, show_head: bool = False) -> None:
     mode_text = "HEADFUL (UI Terbuka)" if show_head else "HEADLESS (Background)"
@@ -181,7 +199,7 @@ async def scrape_find_page(keyword: str, show_head: bool = False) -> None:
         page = await context.new_page()
 
         formatted_keyword = keyword.replace(" ", "%20").lower()
-        url = f"https://www.tokopedia.com/find/{formatted_keyword}?utm_source=google&utm_medium=organic&utm_campaign=find&page=1"
+        url = f"https://www.tokopedia.com/search?navsource=home&q={formatted_keyword}&source=universe&st=product&page=1"
 
         print(f"[*] Mencoba membuka: {url}")
 
@@ -192,14 +210,14 @@ async def scrape_find_page(keyword: str, show_head: bool = False) -> None:
             await browser.close()
             return
 
-        # 1. Scroll untuk load images
-        pagination_locator = await scroll_to_bottom(page, max_attempts=15)
+        # 1. Scroll untuk load images & data
+        await scroll_to_bottom(page, max_attempts=15)
 
         # 2. Extract Pagination
         pagination_locator = page.locator("nav[aria-label='Laman navigasi'], div[data-testid='divSRPPagination']")
         active_page_number, next_url = await extract_pagination_info(pagination_locator)
         
-        # 3. Extract Data Mentah (Passing keyword ke fungsi)
+        # 3. Extract Data Mentah
         data: List[Dict[str, Any]] = await extract_data(page, keyword)
 
         if data:
@@ -212,35 +230,27 @@ async def scrape_find_page(keyword: str, show_head: bool = False) -> None:
             for item in data:
                 img_raw = item.get("image_url_raw")
                 if img_raw:
-                    # Menggunakan to_thread agar request.get() di fungsi s3 tidak nge-block async event loop Playwright
                     s3_url = await asyncio.to_thread(upload_image_to_s3, img_raw)
                     
                     if s3_url:
                         item["image_url"] = s3_url
                         upload_success += 1
                     else:
-                        item["image_url"] = img_raw # Fallback ke url asli jika gagal
+                        item["image_url"] = img_raw 
                         upload_failed += 1
                 else:
                     item["image_url"] = None
                 
-                # Buang data mentah agar DB rapi
                 item.pop("image_url_raw", None)
-                
-                # FIX MONGODB CONFLICT:
-                # Jangan menambahkan item["createdAt"] di sini karena database.py 
-                # sudah menggunakan operator $setOnInsert untuk field tersebut.
                 item["updatedAt"] = datetime.now()
 
-            # Pesan status upload S3 di terminal
             print(f"[*] Status Upload S3: {upload_success} Gambar Berhasil, {upload_failed} Gambar Gagal.")
 
-            # 5. Distribusikan Data (JSON Lokal & MongoDB)
+            # 5. Distribusikan Data ke DB
             db.insert_products(data, source_marketplace="Tokopedia")
         else:
-            print("[-] Tidak ada data yang diekstrak.")
+            print("[-] Tidak ada data yang diekstrak. Format Tokopedia mungkin berubah drastis.")
 
-        # 6. Backup HTML (Jika Anda butuh)
         await save_data_to_json(data, keyword, active_page_number)
         await save_page_as_mhtml(page, keyword, active_page_number)
 
