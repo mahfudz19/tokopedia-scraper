@@ -1,4 +1,5 @@
 from fastapi import FastAPI, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import asyncio
 
@@ -8,6 +9,14 @@ from src.scrapers.lazada.scraper_tag import scrape_lazada_tag
 from src.scrapers.shopee.scraper_search import scrape_shopee_search
 
 app = FastAPI(title="Scraper API with noVNC")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Mengizinkan semua origin (Bisa diganti domain frontend Anda nanti)
+    allow_credentials=True,
+    allow_methods=["*"], # Mengizinkan POST, GET, dll
+    allow_headers=["*"],
+)
 
 # Format request JSON yang diterima
 class ScrapeRequest(BaseModel):
