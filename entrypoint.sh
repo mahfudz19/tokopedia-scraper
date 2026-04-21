@@ -5,9 +5,9 @@ echo "========================================"
 echo "🚀 MEMULAI DOCKER SCRAPER VNC ENVIRONMENT"
 echo "========================================"
 
-# 1. Jalankan Xvfb (Virtual Screen ukuran 1280x720)
+# 1. Jalankan Xvfb (Virtual Screen ukuran 1920x1080)
 echo "[1/5] Starting Xvfb on :99..."
-Xvfb :99 -screen 0 1280x720x24 &
+Xvfb :99 -screen 0 1920x1080x24 &
 sleep 2
 
 # 2. Jalankan Window Manager (Fluxbox) agar Chrome punya bingkai

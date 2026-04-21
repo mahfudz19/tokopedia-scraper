@@ -224,7 +224,7 @@ def run_shopee_selenium(keyword: str, show_head: bool) -> List[Dict[str, Any]]:
 
     options = uc.ChromeOptions()
     options.add_argument("--window-position=0,0")
-    options.add_argument("--window-size=1280,720")
+    options.add_argument("--window-size=896,414")
     
     options.add_argument("--disable-blink-features=AutomationControlled")
 
