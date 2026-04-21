@@ -10,6 +10,7 @@ from src.scrapers.shopee.scraper_search import scrape_shopee_search
 
 app = FastAPI(title="Scraper API with noVNC")
 
+# pengaturan CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], # Mengizinkan semua origin (Bisa diganti domain frontend Anda nanti)
