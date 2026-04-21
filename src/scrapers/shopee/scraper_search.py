@@ -227,11 +227,9 @@ def run_shopee_selenium(keyword: str, show_head: bool) -> List[Dict[str, Any]]:
     options.add_argument("--window-size=1280,720")
     
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument("--start-maximized")
 
     if not show_head:
         options.add_argument("--headless=new")
-        options.add_argument("--window-size=1920,1080")
         options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
     user_data_dir = "./shopee_profile_uc"
