@@ -26,7 +26,7 @@ RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --d
 
 # Atur variabel layar virtual
 ENV DISPLAY=:99
-ENV RESOLUTION=1920x1080x24
+ENV RESOLUTION=1024x1024x24
 
 WORKDIR /app
 

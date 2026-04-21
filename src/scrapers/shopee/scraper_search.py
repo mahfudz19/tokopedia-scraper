@@ -223,8 +223,6 @@ def run_shopee_selenium(keyword: str, show_head: bool) -> List[Dict[str, Any]]:
     print(f"--- Membuka Browser dengan Undetected-Chromedriver [{mode_text}] ---")
 
     options = uc.ChromeOptions()
-    options.add_argument("--window-position=0,0")
-    options.add_argument("--window-size=896,414")
     
     options.add_argument("--disable-blink-features=AutomationControlled")
 
@@ -241,6 +239,7 @@ def run_shopee_selenium(keyword: str, show_head: bool) -> List[Dict[str, Any]]:
         headless=False,  
         version_main=146,
     )
+    driver.maximize_window()
 
     print("[*] Membuka beranda Shopee untuk injeksi pengaturan...")
     driver.get("https://shopee.co.id")
