@@ -10,10 +10,15 @@ from src.scrapers.shopee.scraper_search import scrape_shopee_search
 
 app = FastAPI(title="Scraper API with noVNC")
 
+origins = [
+    "http://localhost:3000",
+    "https://shop-frontend-nine-amber.vercel.app"
+]
+
 # pengaturan CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Mengizinkan semua origin (Bisa diganti domain frontend Anda nanti)
+    allow_origins=origins, # Mengizinkan semua origin (Bisa diganti domain frontend Anda nanti)
     allow_credentials=True,
     allow_methods=["*"], # Mengizinkan POST, GET, dll
     allow_headers=["*"],
