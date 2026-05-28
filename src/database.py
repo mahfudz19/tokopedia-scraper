@@ -26,47 +26,102 @@ class Database:
 
         # Membuat unique index
         self.products_collection.create_index("url", unique=True)
-        self.products_collection.create_index("category")
-        self.products_collection.create_index([("marketplace", 1), ("marketplace_product_id", 1)], unique=True)
         
-        # Compound index untuk query yang sering digunakan bersamaan
-        self.products_collection.create_index([("category", 1), ("marketplace", 1)])
-        print("✓ Terhubung ke Database MongoDB: scraper (Index aktif: url, category, marketplace_product_id)")
+        # Index untuk query yang sering digunakan
+        self.products_collection.create_index("marketplace")
+        self.products_collection.create_index("search_keyword")
+        
+        print("✓ Terhubung ke Database MongoDB: scraper (Index aktif: url, marketplace, search_keyword)")
 
     def insert_products(
-        self, products_list: List[Dict[str, Any]], source_marketplace: str
+        self, products_list: List[Dict[str, Any]], source_marketplace: str, search_keyword: Optional[str] = None
     ) -> None:
-        """Melakukan Upsert data produk ke MongoDB dengan Timestamp."""
+        """Melakukan Upsert data produk ke MongoDB dengan Timestamp dan validasi field wajib.
+        
+        Args:
+            products_list: List produk yang akan disimpan
+            source_marketplace: Nama marketplace sumber (shopee, tokopedia, lazada)
+            search_keyword: Keyword pencarian yang digunakan untuk scraping
+        
+        Raises:
+            ValueError: Jika field wajib tidak ada atau kosong
+        """
+        # Field wajib yang harus ada di setiap produk
+        REQUIRED_FIELDS = {'url', 'location', 'name', 'price_rp'}
+        
         if not products_list:
             print(f"[-] Tidak ada data dari {source_marketplace} untuk disimpan ke DB.")
             return
 
         operations: List[UpdateOne] = []
+        skipped_count = 0
 
-        # 2. Ambil waktu saat ini berstandar UTC
+        # Ambil waktu saat ini berstandar UTC
         current_time = datetime.now(timezone.utc)
 
-        for product in products_list:
-            product["marketplace"] = source_marketplace
-
+        for idx, product in enumerate(products_list):
+            # 1. Validasi field wajib - kumpulkan field yang hilang atau kosong
+            missing_fields = []
+            invalid_fields = []
+            
+            for field in REQUIRED_FIELDS:
+                if field not in product:
+                    missing_fields.append(field)
+                elif product[field] is None or product[field] == '':
+                    invalid_fields.append(field)
+            
+            # Throw error jika ada field wajib yang hilang atau kosong
+            if missing_fields:
+                print(f"[!] Skip produk #{idx + 1} ({source_marketplace}): Field wajib kosong: {', '.join(missing_fields)}")
+                skipped_count += 1
+                continue
+            
+            if invalid_fields:
+                print(f"[!] Skip produk #{idx + 1} ({source_marketplace}): Field wajib tidak valid: {', '.join(invalid_fields)}")
+                skipped_count += 1
+                continue
+            
+            # Validasi tambahan untuk field bertipe int (price_rp)
+            if not isinstance(product.get('price_rp'), (int, float)):
+                print(f"[!] Skip produk #{idx + 1} ({source_marketplace}): price_rp harus bertipe integer, ditemukan: {type(product.get('price_rp'))}")
+                skipped_count += 1
+                continue
+            
+            # 2. Filter produk - hanya ambil field yang diperlukan
+            clean_product = {
+                'url': str(product['url']).strip(),
+                'location': str(product['location']).strip(),
+                'marketplace': source_marketplace,
+                'name': str(product['name']).strip(),
+                'price_rp': int(product['price_rp']),
+                'search_keyword': search_keyword if search_keyword else '',
+            }
+            
             # 3. Selalu perbarui updatedAt setiap kali produk ini di-scrape ulang
-            product["updatedAt"] = current_time
+            clean_product['updatedAt'] = current_time
 
             op = UpdateOne(
-                filter={"url": product["url"]},
+                filter={'url': clean_product['url']},
                 update={
-                    "$set": product,
+                    '$set': clean_product,
                     # 4. createdAt HANYA diisi jika produk ini benar-benar baru di DB
-                    "$setOnInsert": {"createdAt": current_time},
+                    '$setOnInsert': {'createdAt': current_time},
                 },
                 upsert=True,
             )
             operations.append(op)
 
+        if skipped_count > 0:
+            print(f"[-] Total {skipped_count} produk di-skip karena validasi gagal.")
+        
+        if not operations:
+            print(f"[-] Tidak ada produk valid untuk disimpan ke database.")
+            return
+
         try:
             result = self.products_collection.bulk_write(operations)
             print(
-                f"[v] Laporan MongoDB ({source_marketplace}): Baru={result.upserted_count}, Diperbarui={result.modified_count}"
+                f"[v] Laporan MongoDB ({source_marketplace}): Baru={result.upserted_count}, Diperbarui={result.modified_count}, Total={result.upserted_count + result.modified_count}"
             )
         except Exception as e:
             print(f"[!] Gagal menyimpan ke database: {e}")
