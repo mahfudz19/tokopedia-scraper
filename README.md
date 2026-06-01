@@ -2,7 +2,7 @@
 
 Sebuah bot _web scraping_ berbasis Python untuk mengekstrak data produk (nama, harga, lokasi, URL) dari tiga _marketplace_ besar di Indonesia: **Tokopedia**, **Lazada**, dan **Shopee**.
 
-Bot ini dilengkapi dengan sistem _anti-bot bypass_, penyimpanan lokal (JSON & MHTML), dan integrasi langsung ke _database_ MongoDB.
+Bot ini dilengkapi dengan sistem _anti-bot bypass_ dan integrasi langsung ke _database_ MongoDB.
 
 ## ✨ Fitur Utama
 
@@ -11,11 +11,8 @@ Bot ini dilengkapi dengan sistem _anti-bot bypass_, penyimpanan lokal (JSON & MH
   - **Tokopedia & Lazada**: Menggunakan **Playwright** Asynchronous untuk performa tinggi.
   - **Shopee**: Menggunakan **Selenium + Undetected-Chromedriver** untuk menembus pengamanan ketat Datadome Shopee.
 - **Auto-Scroll**: Menggulir halaman secara otomatis untuk memuat produk yang menggunakan metode _lazy-loading_.
-- **Multi-Output Storage**:
-  - Menyimpan data bersih ke dalam file `JSON`.
-  - Mengunggah data langsung ke koleksi `MongoDB`.
-  - Merekam salinan halaman web dalam format `MHTML` sebagai _backup_ visual.
-- **Batch Processing**: Mendukung pencarian banyak _keyword_ sekaligus melalui file `.txt`.
+- **MongoDB Integration**: Menyimpan data produk langsung ke database MongoDB dengan upsert berdasarkan URL.
+- **Batch Processing**: Mendukung pencarian banyak _keyword_ sekaligus melalui file `.txt` dengan resume capability.
 
 ## ⚙️ Persyaratan Sistem
 
