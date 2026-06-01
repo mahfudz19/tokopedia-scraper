@@ -1,186 +1,127 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Tuple, Optional, List, Dict, Any
 from playwright.async_api import async_playwright, Page, Locator
 
-from src.utils import save_page_as_mhtml, scroll_to_bottom, save_data_to_json, upload_image_to_s3
 from src.database import db
 
-
-async def extract_pagination_info(
-    pagination_locator: Locator,
-) -> Tuple[str, Optional[str]]:
-    active_page_number: str = "1"
-    next_url: Optional[str] = None
-
-    try:
-        if await pagination_locator.count() == 0:
-            print("[*] Tidak ada paginasi. Ini adalah satu-satunya halaman.")
-            return active_page_number, next_url
-
-        active_page_locator = pagination_locator.locator(
-            "a[data-active='true'], span[data-active='true']"
-        )
-        active_page_number = await active_page_locator.inner_text(timeout=3000)
-        print(f"[*] Halaman yang saat ini aktif: {active_page_number}")
-
-        next_button_locator = pagination_locator.locator(
-            "a[aria-label='Laman berikutnya'], button[aria-label='Laman berikutnya']"
-        )
-        if await next_button_locator.is_visible():
-            next_url = await next_button_locator.get_attribute("href")
-            print(f"[+] Halaman berikutnya tersedia: {next_url}")
-        else:
-            print("[-] Ini adalah halaman terakhir.")
-
-    except Exception as e:
-        print(f"[-] Gagal mendeteksi informasi paginasi: {e}")
-
-    return active_page_number, next_url
-
-
 async def extract_data(page: Page, keyword: str) -> List[Dict[str, Any]]:
-    """Mengekstrak data komprehensif dari DOM Tokopedia versi terbaru."""
+    """Ekstrak data produk Tokopedia dengan textNodes approach."""
     print(f"\n[*] Mengekstrak data produk untuk keyword: '{keyword}'...")
 
     extracted_data: List[Dict[str, Any]] = await page.evaluate(
         r"""(searchKeyword) => {
         const results = [];
-        
-        // 1. Cari Container Utama yang stabil (data-testid jarang berubah)
         const container = document.querySelector('div[data-testid="divSRPContentProducts"]');
         if (!container) return results;
 
-        // 2. Ambil semua link produk di dalamnya
         const cards = container.querySelectorAll('a[href]');
-        
+
         cards.forEach(aTag => {
             const raw_url = aTag.href;
-            // Pastikan ini adalah link produk, bukan link promo/iklan banner
+            // Early exit: filter link produk
             if (!raw_url || !raw_url.includes('tokopedia.com/')) return;
-            if (raw_url.includes('/promo') || raw_url.includes('/discovery')) return; 
-            
-            const clean_url = raw_url.split('?')[0]; 
-            const marketplace_product_id = clean_url; 
-            
-            // 3. Ekstrak Image URL
-            let image_url_raw = null;
-            // Mencari gambar dengan alt "product-image" (Sangat stabil)
-            const imgTag = aTag.querySelector('img[alt="product-image"]');
-            if (imgTag) {
-                let src = imgTag.src || imgTag.getAttribute('data-src') || imgTag.getAttribute('srcset')?.split(' ')[0];
-                // Tokopedia menggunakan svg zeus_v2 sebagai placeholder lazy-load. Abaikan jika belum terload.
-                if (src && !src.includes('zeus_v2')) {
-                    image_url_raw = src;
-                }
-            }
+            if (raw_url.includes('/promo') || raw_url.includes('/discovery')) return;
 
-            // 4. Kumpulkan Text Nodes untuk Heuristik
+            const url = raw_url.split('?')[0];
+
+            // 1. NAMA PRODUK - textNodes approach (proven to work)
+            let name = "Nama tidak ditemukan";
             const textNodes = Array.from(aTag.querySelectorAll('*'))
                 .filter(el => el.children.length === 0 && el.textContent.trim().length > 0)
                 .map(el => el.textContent.trim());
-            
-            let title = "Nama tidak ditemukan";
-            let prices = [];
-            let discount_percent = 0;
-            let rating = 0;
-            let sold_count = 0;
-            let shop = "Toko tidak diketahui";
-            let location = "Lokasi tidak diketahui";
-            
-            // Ekstrak DISKON
-            const discountMatch = textNodes.find(t => t.match(/^\d+%$/));
-            if (discountMatch) {
-                discount_percent = parseInt(discountMatch.replace('%', '')) || 0;
-            }
 
-            // Ekstrak HARGA
-            const rpNodes = textNodes.filter(t => t.startsWith("Rp"));
-            rpNodes.forEach(rp => {
-                const num = parseInt(rp.replace(/[^0-9]/g, ''));
-                if (num && num > 0) prices.push(num);
-            });
-            
-            let price_rp = 0;
-            let price_original = 0;
-            if (prices.length > 0) {
-                price_original = Math.max(...prices); 
-                price_rp = Math.min(...prices);       
-            }
-
-            // Ekstrak NAMA PRODUK
-            // Logika: Teks yang panjangnya lumayan, bukan harga, bukan jumlah terjual, dll.
-            const potentialTitles = textNodes.filter(t => 
-                t.length > 10 && 
-                !t.startsWith("Rp") && 
-                !t.toLowerCase().includes("terjual") && 
-                !t.toLowerCase().includes("hemat") && 
-                !t.toLowerCase().includes("cashback") && 
-                !t.match(/^[0-5]\.[0-9]$/)
-            );
-            if (potentialTitles.length > 0) {
-                title = potentialTitles[0];
-            }
-
-            // Ekstrak RATING
-            const ratingStr = textNodes.find(t => t.match(/^[0-5]\.[0-9]$/));
-            if(ratingStr) rating = parseFloat(ratingStr) || 0;
-
-            // Ekstrak TERJUAL
-            const soldStr = textNodes.find(t => t.toLowerCase().includes("terjual"));
-            if (soldStr) {
-                let s = soldStr.toLowerCase().replace("terjual", "").replace(/\+/g, "").trim();
-                if (s.includes("rb")) {
-                    sold_count = parseInt(parseFloat(s.replace("rb", "").replace(",", ".")) * 1000);
-                } else if (s.includes("jt")) {
-                    sold_count = parseInt(parseFloat(s.replace("jt", "").replace(",", ".")) * 1000000);
-                } else {
-                    sold_count = parseInt(s) || 0;
+            // Cari nama: text panjang (>15 chars) yang bukan harga/lokasi
+            for (const text of textNodes) {
+                if (text.length > 15 && text.length < 100 && !text.includes('Rp') && !text.includes('terjual')) {
+                    name = text;
+                    break;
                 }
             }
 
-            // Ekstrak TOKO & LOKASI
-            // Tokopedia versi ini sering menaruh nama toko dan lokasi dengan class yg ada kata "flip"
+            // 2. HARGA - parse dari textNodes
+            let price_rp = 0;
+            const fullText = aTag.textContent;
+            const priceMatch = fullText.match(/Rp(\d{1,3}(?:[.\d{3}]*))/);
+            if (priceMatch) {
+                price_rp = parseInt(priceMatch[1].replace(/\./g, ''));
+            }
+
+            // 3. LOKASI & TOKO - dari span[class*="flip"] (sudah optimal)
+            let location = "Lokasi tidak diketahui";
+            let shop = "Toko tidak diketahui";
+
             const flipNodes = Array.from(aTag.querySelectorAll('span[class*="flip"]')).map(el => el.textContent.trim());
             if (flipNodes.length >= 2) {
                 shop = flipNodes[0];
                 location = flipNodes[1];
             } else if (flipNodes.length === 1) {
                 shop = flipNodes[0];
-            } else {
-                // Fallback Heuristik (Tebak dari posisi teks)
-                const locationCandidates = textNodes.filter(t => !t.startsWith("Rp") && !t.includes("terjual") && !t.includes("%") && t.length < 25);
-                if (locationCandidates.length >= 2) {
-                    location = locationCandidates[locationCandidates.length - 1];
-                    shop = locationCandidates[locationCandidates.length - 2];     
-                }
             }
-            
-            // Validasi & Simpan ke Array
-            if (price_rp > 0 && title !== "Nama tidak ditemukan" && shop !== "Toko tidak diketahui") {
-                results.push({ 
-                    search_keyword: searchKeyword,
-                    category: [searchKeyword],
-                    marketplace_product_id: marketplace_product_id,
-                    clean_url: clean_url,
-                    url: clean_url, 
-                    name: title, 
-                    price_original: price_original,
-                    price_rp: price_rp, 
-                    discount_percent: discount_percent,
-                    rating: rating,
-                    sold_count: sold_count,
-                    shop: shop, 
-                    location: location, 
-                    image_url_raw: image_url_raw, 
-                    marketplace: "Tokopedia",
-                });
+
+            // Validasi & Simpan
+            if (price_rp > 0 && name !== "Nama tidak ditemukan") {
+                results.push({ url, name, price_rp, shop, location });
             }
         });
         return results;
     }""", keyword
     )
+    print(f"    [✓] Berhasil mengekstrak {len(extracted_data)} produk")
     return extracted_data
+
+async def scroll_to_bottom_tokopedia(page: Page, max_attempts: int = 35, scroll_multiplier: float = 1.5, wait_for_timeout=500) -> None:
+    """Scroll to bottom dengan viewport-based approach untuk Tokopedia.
+
+    Menggunakan scroll agresif (1.5x viewport) untuk trigger lazy-load.
+    Sweet spot: cepat tapi tetap dapat banyak produk (~50-80).
+    """
+    print(f"\n[*] Memulai auto-scroll Tokopedia (max_attempts={max_attempts}, {scroll_multiplier}x viewport)...")
+    attempts: int = 0
+    consecutive_no_growth: int = 0
+    max_consecutive_no_growth: int = 3
+
+    last_scroll_position: float = await page.evaluate("window.scrollY")
+    last_content_height: float = await page.evaluate("(document.body || document.documentElement).scrollHeight")
+
+    while attempts < max_attempts:
+        # Scroll 1.5x viewport height - sweet spot untuk trigger lazy-load
+        scroll_distance: float = await page.evaluate(f"window.innerHeight * {scroll_multiplier}")
+        await page.evaluate(f"window.scrollBy(0, {scroll_distance})")
+
+        # Wait untuk lazy-load produk
+        await page.wait_for_timeout(wait_for_timeout)
+
+        new_scroll_position: float = await page.evaluate("window.scrollY")
+        new_content_height: float = await page.evaluate("(document.body || document.documentElement).scrollHeight")
+
+        content_grew = new_content_height > last_content_height
+        scroll_worked = new_scroll_position > last_scroll_position
+
+        # Debug progress setiap 10 scroll
+        if attempts % 10 == 0 and attempts > 0:
+            print(f"    [debug] Scroll #{attempts}: height={new_content_height:.0f}px")
+
+        if not scroll_worked:
+            print("[✓] Scroll selesai: sudah mentok bawah.")
+            break
+
+        if not content_grew:
+            consecutive_no_growth += 1
+            if consecutive_no_growth >= max_consecutive_no_growth:
+                print("[✓] Scroll selesai: content tidak bertambah.")
+                break
+        else:
+            consecutive_no_growth = 0
+
+        last_scroll_position = new_scroll_position
+        last_content_height = new_content_height
+        attempts += 1
+
+    print(f"    [✓] Scroll selesai: {attempts} attempts, final height={last_content_height:.0f}px")
+    if attempts == max_attempts:
+        print("[!] Scroll berhenti: mencapai batas maksimal percobaan.")
+
 
 async def scrape_find_page(keyword: str, show_head: bool = False) -> None:
     mode_text = "HEADFUL (UI Terbuka)" if show_head else "HEADLESS (Background)"
@@ -211,48 +152,18 @@ async def scrape_find_page(keyword: str, show_head: bool = False) -> None:
             return
 
         # 1. Scroll untuk load images & data
-        await scroll_to_bottom(page, max_attempts=15)
+        await scroll_to_bottom_tokopedia(page, max_attempts=35, scroll_multiplier=1.5, wait_for_timeout=500)
 
-        # 2. Extract Pagination
-        pagination_locator = page.locator("nav[aria-label='Laman navigasi'], div[data-testid='divSRPPagination']")
-        active_page_number, next_url = await extract_pagination_info(pagination_locator)
-        
-        # 3. Extract Data Mentah
+        # 2. Extract Data Mentah
         data: List[Dict[str, Any]] = await extract_data(page, keyword)
 
         if data:
-            print(f"[*] Memproses {len(data)} produk untuk S3 Upload & Formatting...")
-            
-            # 4. Upload Gambar ke AWS S3
-            upload_success = 0
-            upload_failed = 0
+            print(f"[*] Memproses {len(data)} produk untuk disimpan ke database...")
 
-            for item in data:
-                img_raw = item.get("image_url_raw")
-                if img_raw:
-                    s3_url = await asyncio.to_thread(upload_image_to_s3, img_raw)
-                    
-                    if s3_url:
-                        item["image_url"] = s3_url
-                        upload_success += 1
-                    else:
-                        item["image_url"] = img_raw 
-                        upload_failed += 1
-                else:
-                    item["image_url"] = None
-                
-                item.pop("image_url_raw", None)
-                item["updatedAt"] = datetime.now()
-
-            print(f"[*] Status Upload S3: {upload_success} Gambar Berhasil, {upload_failed} Gambar Gagal.")
-
-            # 5. Distribusikan Data ke DB
-            db.insert_products(data, source_marketplace="Tokopedia")
+            # 3. Simpan ke Database
+            db.insert_products(data, source_marketplace="Tokopedia", search_keyword=keyword)
         else:
             print("[-] Tidak ada data yang diekstrak. Format Tokopedia mungkin berubah drastis.")
-
-        await save_data_to_json(data, keyword, active_page_number)
-        await save_page_as_mhtml(page, keyword, active_page_number)
 
         print("\n✓ Proses selesai. Browser ditutup dengan sukses.")
         await browser.close()
