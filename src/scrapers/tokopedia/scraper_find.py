@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Tuple, Optional, List, Dict, Any
 from playwright.async_api import async_playwright, Page, Locator
@@ -123,47 +124,75 @@ async def scroll_to_bottom_tokopedia(page: Page, max_attempts: int = 35, scroll_
         print("[!] Scroll berhenti: mencapai batas maksimal percobaan.")
 
 
-async def scrape_find_page(keyword: str, show_head: bool = False) -> None:
+async def scrape_find_page(keyword: str, show_head: bool = False) -> Dict[str, Any]:
+    """Scrape produk Tokopedia berdasarkan keyword dan simpan ke database.
+
+    Returns:
+        Dict dengan keys: success, keyword, products_count, db_new, db_updated, duration, error
+    """
+    start_time = time.time()
     mode_text = "HEADFUL (UI Terbuka)" if show_head else "HEADLESS (Background)"
-    print(f"--- Membuka Browser Tokopedia [{mode_text}] ---")
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(
-            headless=not show_head,
-            channel="chrome",
-            ignore_default_args=["--enable-automation"],
-            args=["--disable-blink-features=AutomationControlled"],
-        )
-        context = await browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-        page = await context.new_page()
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=not show_head,
+                channel="chrome",
+                ignore_default_args=["--enable-automation"],
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page = await context.new_page()
 
-        formatted_keyword = keyword.replace(" ", "%20").lower()
-        url = f"https://www.tokopedia.com/search?navsource=home&q={formatted_keyword}&source=universe&st=product&page=1"
+            formatted_keyword = keyword.replace(" ", "%20").lower()
+            url = f"https://www.tokopedia.com/search?navsource=home&q={formatted_keyword}&source=universe&st=product&page=1"
 
-        print(f"[*] Mencoba membuka: {url}")
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            except Exception as e:
+                await browser.close()
+                raise e
 
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
-        except Exception as e:
-            print(f"[!] Halaman gagal dimuat (Timeout/Diblokir): {e}")
+            # 1. Scroll untuk load images & data
+            await scroll_to_bottom_tokopedia(page, max_attempts=35, scroll_multiplier=1.5, wait_for_timeout=500)
+
+            # 2. Extract Data Mentah
+            data: List[Dict[str, Any]] = await extract_data(page, keyword)
+
+            # 3. Simpan ke Database dan dapatkan stats
+            db_new = 0
+            db_updated = 0
+
+            if data:
+                result = db.insert_products(data, source_marketplace="Tokopedia", search_keyword=keyword)
+                if result:
+                    db_new = result.get("new", 0)
+                    db_updated = result.get("updated", 0)
+
             await browser.close()
-            return
 
-        # 1. Scroll untuk load images & data
-        await scroll_to_bottom_tokopedia(page, max_attempts=35, scroll_multiplier=1.5, wait_for_timeout=500)
+            duration = time.time() - start_time
 
-        # 2. Extract Data Mentah
-        data: List[Dict[str, Any]] = await extract_data(page, keyword)
+            return {
+                "success": True,
+                "keyword": keyword,
+                "products_count": len(data),
+                "db_new": db_new,
+                "db_updated": db_updated,
+                "duration": duration,
+                "error": None
+            }
 
-        if data:
-            print(f"[*] Memproses {len(data)} produk untuk disimpan ke database...")
-
-            # 3. Simpan ke Database
-            db.insert_products(data, source_marketplace="Tokopedia", search_keyword=keyword)
-        else:
-            print("[-] Tidak ada data yang diekstrak. Format Tokopedia mungkin berubah drastis.")
-
-        print("\n✓ Proses selesai. Browser ditutup dengan sukses.")
-        await browser.close()
+    except Exception as e:
+        duration = time.time() - start_time
+        return {
+            "success": False,
+            "keyword": keyword,
+            "products_count": 0,
+            "db_new": 0,
+            "db_updated": 0,
+            "duration": duration,
+            "error": str(e)[:100]
+        }

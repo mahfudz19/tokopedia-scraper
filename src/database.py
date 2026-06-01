@@ -35,14 +35,18 @@ class Database:
 
     def insert_products(
         self, products_list: List[Dict[str, Any]], source_marketplace: str, search_keyword: Optional[str] = None
-    ) -> None:
+    ) -> Optional[Dict[str, int]]:
         """Melakukan Upsert data produk ke MongoDB dengan Timestamp dan validasi field wajib.
-        
+
         Args:
             products_list: List produk yang akan disimpan
             source_marketplace: Nama marketplace sumber (shopee, tokopedia, lazada)
             search_keyword: Keyword pencarian yang digunakan untuk scraping
-        
+
+        Returns:
+            Dict dengan keys: 'new' (jumlah produk baru), 'updated' (jumlah produk diupdate)
+            None jika tidak ada produk valid untuk disimpan
+
         Raises:
             ValueError: Jika field wajib tidak ada atau kosong
         """
@@ -120,11 +124,18 @@ class Database:
 
         try:
             result = self.products_collection.bulk_write(operations)
+            stats = {
+                "new": result.upserted_count,
+                "updated": result.modified_count,
+                "total": result.upserted_count + result.modified_count
+            }
             print(
-                f"[v] Laporan MongoDB ({source_marketplace}): Baru={result.upserted_count}, Diperbarui={result.modified_count}, Total={result.upserted_count + result.modified_count}"
+                f"[v] Laporan MongoDB ({source_marketplace}): Baru={stats['new']}, Diperbarui={stats['updated']}, Total={stats['total']}"
             )
+            return stats
         except Exception as e:
             print(f"[!] Gagal menyimpan ke database: {e}")
+            return None
 
     def close(self) -> None:
         self.client.close()

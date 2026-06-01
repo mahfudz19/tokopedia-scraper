@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -222,16 +222,58 @@ def run_shopee_selenium(keyword: str, show_head: bool) -> List[Dict[str, Any]]:
     driver.quit()
     return data
 
-async def scrape_shopee_search(keyword: str, show_head: bool = False) -> None:
-    """Scrape produk Shopee berdasarkan keyword dan simpan ke database."""
-    # 1. Jalankan Selenium secara Asinkron
-    data = await asyncio.to_thread(run_shopee_selenium, keyword, show_head)
+async def scrape_shopee_search(keyword: str, show_head: bool = False) -> Dict[str, Any]:
+    """Scrape produk Shopee berdasarkan keyword dan simpan ke database.
 
-    # 2. Simpan ke MongoDB secara sinkron
-    if data:
-        print(f"\n[*] Memproses {len(data)} produk untuk disimpan ke database...")
-        db.insert_products(data, source_marketplace="Shopee", search_keyword=keyword)
-    else:
-        print("\n[-] Tidak ada data yang diekstrak. Mungkin struktur HTML Shopee sedang berubah atau terhalang Captcha.")
+    Returns:
+        Dict dengan keys: success, keyword, products_count, db_new, db_updated, duration, error
+    """
+    start_time = time.time()
 
-    print("\n✓ Proses Keseluruhan Selesai.")
+    try:
+        # 1. Jalankan Selenium secara Asinkron
+        data = await asyncio.to_thread(run_shopee_selenium, keyword, show_head)
+
+        # 2. Simpan ke MongoDB dan dapatkan stats
+        db_new = 0
+        db_updated = 0
+
+        if data:
+            result = db.insert_products(data, source_marketplace="Shopee", search_keyword=keyword)
+            if result:
+                db_new = result.get("new", 0)
+                db_updated = result.get("updated", 0)
+
+            products_count = len(data)
+        else:
+            products_count = 0
+
+        duration = time.time() - start_time
+
+        return {
+            "success": True,
+            "keyword": keyword,
+            "products_count": products_count,
+            "db_new": db_new,
+            "db_updated": db_updated,
+            "duration": duration,
+            "error": None
+        }
+
+    except Exception as e:
+        duration = time.time() - start_time
+        error_msg = str(e)
+
+        # Handle special case untuk CAPTCHA
+        if "CAPTCHA_BLOCK" in error_msg:
+            error_msg = "CAPTCHA_BLOCK"
+
+        return {
+            "success": False,
+            "keyword": keyword,
+            "products_count": 0,
+            "db_new": 0,
+            "db_updated": 0,
+            "duration": duration,
+            "error": error_msg[:100]
+        }
