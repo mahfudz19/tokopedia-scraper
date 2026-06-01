@@ -1,153 +1,147 @@
-import asyncio
-from datetime import datetime
-from typing import Tuple, Optional, List, Dict, Any
-from playwright.async_api import async_playwright, Page, Locator
+from typing import  List, Dict, Any
+from playwright.async_api import async_playwright, Page
 
-from src.utils import save_page_as_mhtml, scroll_to_bottom, save_data_to_json, upload_image_to_s3
 from src.database import db
-
-async def extract_pagination_info(
-    pagination_locator: Locator,
-) -> Tuple[str, Optional[str]]:
-    active_page_number: str = "1"
-    next_url: Optional[str] = None
-
-    try:
-        if await pagination_locator.count() == 0:
-            print("[*] Tidak ada paginasi (Antarmuka Lazada mungkin menggunakan infinite scroll).")
-            return active_page_number, next_url
-
-        active_page_locator = pagination_locator.locator("li.ant-pagination-item-active")
-        if await active_page_locator.is_visible():
-            active_page_number = await active_page_locator.inner_text(timeout=3000)
-            print(f"[*] Halaman yang saat ini aktif: {active_page_number}")
-
-        next_button_locator = pagination_locator.locator("li.ant-pagination-next:not(.ant-pagination-disabled) a, button.ant-pagination-next")
-        if await next_button_locator.is_visible():
-            next_url = await next_button_locator.get_attribute("href")
-            if next_url and not next_url.startswith("http"):
-                next_url = "https://www.lazada.co.id" + next_url
-            print(f"[+] Halaman berikutnya tersedia: {next_url}")
-        else:
-            print("[-] Ini adalah halaman terakhir.")
-
-    except Exception as e:
-        print(f"[-] Gagal mendeteksi informasi paginasi: {e}")
-
-    return active_page_number, next_url
-
 
 async def extract_data(page: Page, keyword: str) -> List[Dict[str, Any]]:
     """Mengekstrak data dari DOM Lazada berdasarkan data-qa-locator."""
     print(f"\n[*] Mengekstrak data produk Lazada untuk keyword: '{keyword}'...")
 
     extracted_data: List[Dict[str, Any]] = await page.evaluate(
-        """(searchKeyword) => {
-        const results = [];
-        const cards = document.querySelectorAll('div[data-qa-locator="product-item"]');
-        
-        cards.forEach(card => {
-            const aTag = card.querySelector('a');
-            if (!aTag) return; 
-            
-            // 1. Identifikasi URL & ID (SANGAT URGENT)
-            let raw_url = aTag.href;
-            if (raw_url.startsWith('//')) {
-                raw_url = 'https:' + raw_url;
-            }
-            const clean_url = raw_url.split('?')[0]; 
-            
-            // Mengambil ID Spesifik dari atribut data-item-id
-            const marketplace_product_id = card.getAttribute('data-item-id') || clean_url;
-            
-            // 2. Ekstrak Image URL Mentah (SANGAT URGENT)
-            const imgTag = card.querySelector('img[type="product"]') || card.querySelector('div.picture-wrapper img');
-            const image_url_raw = imgTag ? (imgTag.src || imgTag.getAttribute('data-src')) : null;
+        """
+        (searchKeyword) => {
+            const results = [];
+            const cards = document.querySelectorAll('div[data-qa-locator="product-item"]');
 
-            // Ambil semua node teks untuk diproses
-            const textNodes = Array.from(card.querySelectorAll('*'))
-                .filter(el => el.children.length === 0 && el.textContent.trim().length > 0)
-                .map(el => el.textContent.trim());
-            
-            let title = "Nama tidak ditemukan";
-            const titleLink = card.querySelector('a[title]');
-            if (titleLink) {
-                title = titleLink.getAttribute('title');
+            // Helper: parse sold count (handle "4.4K", "1.2rb", "77", dll)
+            function parseSoldCount(text) {
+                if (!text) return 0;
+                let s = text.toLowerCase().replace(/sold|terjual/g, '').replace(/\\+/g, '').trim();
+                if (s.includes('k') || s.includes('rb')) {
+                    return parseInt(parseFloat(s.replace('k', '').replace('rb', '').replace(',', '.')) * 1000);
+                }
+                return parseInt(s) || 0;
             }
 
-            let prices = [];
-            let discount_percent = 0;
-            let rating = 0; 
-            let sold_count = 0;
-            let shop = "Lazada Seller"; 
-            let location = "Lokasi tidak diketahui";
-            
-            // 3. Ekstrak DISKON (Mencari teks seperti '28% Off')
-            const discountMatch = textNodes.find(t => t.match(/\\d+%\\s*(Off)?/i));
-            if (discountMatch) {
-                const num = discountMatch.match(/(\\d+)/);
-                if(num) discount_percent = parseInt(num[0]) || 0;
-            }
+            cards.forEach(card => {
+                const aTag = card.querySelector('a');
+                if (!aTag) return;
 
-            // 4. Ekstrak HARGA
-            const rpNodes = textNodes.filter(t => t.toLowerCase().startsWith("rp"));
-            rpNodes.forEach(rp => {
-                const num = parseInt(rp.replace(/[^0-9]/g, ''));
-                if (num && num > 0) prices.push(num);
-            });
-            
-            let price_rp = 0;
-            let price_original = 0;
-            if (prices.length > 0) {
-                price_original = Math.max(...prices);
-                price_rp = Math.min(...prices);
-            }
+                // 1. Identifikasi URL & ID
+                let raw_url = aTag.href;
+                if (raw_url.startsWith('//')) {
+                    raw_url = 'https:' + raw_url;
+                }
+                const clean_url = raw_url.split('?')[0];
+                const marketplace_product_id = card.getAttribute('data-item-id') || clean_url;
 
-            // 5. Ekstrak TERJUAL (Mencari '4.4K sold' atau 'terjual')
-            const soldStr = textNodes.find(t => t.toLowerCase().includes("sold") || t.toLowerCase().includes("terjual"));
-            if (soldStr) {
-                let s = soldStr.toLowerCase().replace("sold", "").replace("terjual", "").replace(/\\+/g, "").trim();
-                if (s.includes("k") || s.includes("rb")) {
-                    sold_count = parseInt(parseFloat(s.replace("k", "").replace("rb", "").replace(",", ".")) * 1000);
+                // 2. Ekstrak Image URL
+                const imgTag = card.querySelector('img[type="product"]') || card.querySelector('div.picture-wrapper img');
+                const image_url_raw = imgTag ? (imgTag.src || imgTag.getAttribute('data-src')) : null;
+
+                // 3. Ekstrak TITLE - Prioritas: img[alt] → a[title]
+                let title = "Nama tidak ditemukan";
+                const productImg = card.querySelector('img[type="product"]');
+                if (productImg && productImg.alt && productImg.alt.trim()) {
+                    title = productImg.alt.trim();
                 } else {
-                    sold_count = parseInt(s) || 0;
+                    const titleLink = card.querySelector('a[title]');
+                    if (titleLink) {
+                        title = titleLink.getAttribute('title');
+                    }
                 }
-            }
 
-            // 6. Ekstrak LOKASI (Kota/Kab)
-            const locNode = textNodes.find(t => t.startsWith("Kota ") || t.startsWith("Kab. ") || t.startsWith("DKI "));
-            if (locNode) {
-                location = locNode;
-            } else if (textNodes.length > 0) {
-                const lastText = textNodes[textNodes.length - 1];
-                if (!lastText.match(/^\\d/)) {
-                    location = lastText;
+                let price_rp = 0;
+                let price_original = 0;
+                let discount_percent = 0;
+                let rating = 0;
+                let sold_count = 0;
+                let shop = "Lazada Seller";
+                let location = "Lokasi tidak diketahui";
+
+                // 4. Ekstrak HARGA - Target div.aBrP0 > span.ooOxS
+                const priceSpan = card.querySelector('span.ooOxS');
+                if (priceSpan) {
+                    const priceText = priceSpan.textContent;
+                    const priceMatch = priceText.match(/Rp\\s*([\\d.]+)/);
+                    if (priceMatch) {
+                        price_rp = parseInt(priceMatch[1].replace(/\\./g, ''));
+                        price_original = price_rp;
+                    }
                 }
-            }
-            
-            // Validasi & Simpan
-            if (price_rp > 0 && title !== "Nama tidak ditemukan") {
-                results.push({ 
-                    search_keyword: searchKeyword,
-                    category: [searchKeyword], // Standard Baru: Array of String
-                    marketplace_product_id: marketplace_product_id,
-                    clean_url: clean_url,
-                    url: clean_url,
-                    name: title, 
-                    price_original: price_original,
-                    price_rp: price_rp, 
-                    discount_percent: discount_percent,
-                    rating: rating,
-                    sold_count: sold_count,
-                    shop: shop, 
-                    location: location, 
-                    image_url_raw: image_url_raw,
-                    marketplace: "Lazada",
-                });
-            }
-        });
-        return results;
-    }""", keyword
+
+                // 5. Ekstrak DISKON - Target badge "Voucher save XX%" atau "% Off"
+                const discountBadge = card.querySelector('.ic-dynamic-badge-120014');
+                if (discountBadge) {
+                    const badgeText = discountBadge.textContent;
+                    const match = badgeText.match(/save\\s*(\\d+)%/i);
+                    if (match) {
+                        discount_percent = parseInt(match[1]);
+                    }
+                }
+                // Fallback: cari pattern "% Off"
+                if (discount_percent === 0) {
+                    const offBadge = card.querySelector('span.IcOsH');
+                    if (offBadge) {
+                        const offMatch = offBadge.textContent.match(/(\\d+)%\\s*Off/i);
+                        if (offMatch) {
+                            discount_percent = parseInt(offMatch[1]);
+                        }
+                    }
+                }
+
+                // 6. Ekstrak TERJUAL - Target span dengan text "X sold"
+                const soldElements = card.querySelectorAll('span');
+                for (const span of soldElements) {
+                    const text = span.textContent?.trim() || '';
+                    if (/sold$/.test(text)) {
+                        sold_count = parseSoldCount(text);
+                        break;
+                    }
+                }
+
+                // 7. Ekstrak LOKASI - Target span.oa6ri dengan attribute title
+                const locationEl = card.querySelector('span.oa6ri');
+                if (locationEl) {
+                    const locTitle = locationEl.getAttribute('title');
+                    if (locTitle && locTitle.trim()) {
+                        location = locTitle.trim();
+                    }
+                }
+
+                // 8. Ekstrak RATING - Cari element dengan class mengandung "rating" atau "star"
+                const ratingEl = card.querySelector('[class*="rating"], [class*="star"]');
+                if (ratingEl) {
+                    const ratingText = ratingEl.textContent.match(/([0-9.]+)/);
+                    if (ratingText) {
+                        rating = parseFloat(ratingText[1]);
+                    }
+                }
+
+                // Validasi & Simpan
+                if (price_rp > 0 && title !== "Nama tidak ditemukan") {
+                    results.push({
+                        search_keyword: searchKeyword || '',
+                        category: [searchKeyword || ''],
+                        marketplace_product_id: marketplace_product_id,
+                        clean_url: clean_url,
+                        url: clean_url,
+                        name: title,
+                        price_original: price_original,
+                        price_rp: price_rp,
+                        discount_percent: discount_percent,
+                        rating: rating,
+                        sold_count: sold_count,
+                        shop: shop,
+                        location: location,
+                        marketplace: "Lazada",
+                    });
+                }
+            });
+            return results;
+        }
+        """,
+        keyword,
     )
     return extracted_data
 
@@ -188,62 +182,19 @@ async def scrape_lazada_tag(keyword: str, show_head: bool = False) -> None:
             await browser.close()
             return
 
-        # 1. Scroll untuk load images
-        pagination_locator = await scroll_to_bottom(page, max_attempts=15)
+        # 1. Wait untuk load data
+        await page.wait_for_timeout(2000)
 
-        # 2. Extract Pagination
-        pagination_locator = page.locator("ul.ant-pagination")
-        active_page_number, next_url = await extract_pagination_info(pagination_locator)
-        
-        # 3. Extract Data Mentah
+        # 2 Extract Data Mentah
         data: List[Dict[str, Any]] = await extract_data(page, keyword)
 
         if data:
-            print(f"[*] Memproses {len(data)} produk untuk S3 Upload & Formatting...")
-            
-            # 4. Upload Gambar ke AWS S3
-            upload_success = 0
-            upload_failed = 0
+            print(f"[*] Memproses {len(data)} produk untuk disimpan ke database...")
 
-            for item in data:
-                img_raw = item.get("image_url_raw")
-                if img_raw:
-                    if img_raw.startswith("//"):
-                        img_raw = "https:" + img_raw
-                        
-                    s3_url = await asyncio.to_thread(upload_image_to_s3, img_raw)
-                    
-                    if s3_url:
-                        # STANDARD BARU: Simpan hanya path S3-nya (Memotong domain amazonaws)
-                        bucket_domain = "amazonaws.com/"
-                        if bucket_domain in s3_url:
-                            item["image_url"] = s3_url.split(bucket_domain)[1]
-                        else:
-                            item["image_url"] = s3_url
-                            
-                        upload_success += 1
-                    else:
-                        item["image_url"] = img_raw # Fallback ke raw jika S3 gagal
-                        upload_failed += 1
-                else:
-                    item["image_url"] = None
-                
-                # Buang data mentah
-                item.pop("image_url_raw", None)
-                
-                # STANDARD BARU: Hapus createdAt agar tidak bentrok dengan Upsert MongoDB
-                item["updatedAt"] = datetime.now()
-
-            print(f"[*] Status Upload S3: {upload_success} Gambar Berhasil, {upload_failed} Gambar Gagal.")
-
-            # 5. Distribusikan Data
-            db.insert_products(data, source_marketplace="Lazada")
+            # 4. Simpan ke Database
+            db.insert_products(data, source_marketplace="Lazada", search_keyword=keyword)
         else:
             print("[-] Tidak ada data yang diekstrak. (Mungkin terhalang Anti-bot/Struktur berubah)")
-
-        # 6. Backup Lokal
-        await save_data_to_json(data, keyword, active_page_number, prefix="lazada")
-        await save_page_as_mhtml(page, keyword, active_page_number, prefix="lazada")
 
         print("\n✓ Proses selesai. Browser ditutup dengan sukses.")
         await browser.close()
