@@ -108,9 +108,101 @@ Shopee memiliki sistem pertahanan _anti-bot_ (Datadome) yang sangat ketat. Skrip
 
 Proyek ini dibuat untuk tujuan pembelajaran dan portofolio Data Engineering. Pastikan untuk selalu mematuhi _Terms of Service_ dari masing-masing situs web.
 
-## Run by Docker
+## 🐳 Menjalankan dengan Docker
+
+Proyek ini sudah dilengkapi Dockerfile multi-platform yang mendukung **Mac M1/M2 (ARM64)** dan **Linux/Intel (AMD64)**. Docker image ini sudah mengandung semua yang dibutuhkan: Python, Chromium/Google Chrome, Playwright, Selenium, noVNC, dan FastAPI.
+
+### 📋 Persyaratan
+
+- Docker Desktop atau Docker Engine sudah terinstall.
+- File `.env` sudah dibuat dari `.env.example` dan berisi `MONGODB_URI`.
+
+### 1. Konfigurasi Environment
+
+Salin file `.env.example` menjadi `.env`, lalu isi URI MongoDB Anda:
 
 ```bash
-docker build -t scraper-novnc .
-docker run --env-file .env -p 8000:8000 -p 6080:6080 --name my-scraper scraper-novnc
+cp .env.example .env
 ```
+
+Isi file `.env`:
+
+```env
+MONGODB_URI=mongodb://localhost:27017/
+```
+
+### 2. Build Docker Image
+
+```bash
+docker build -t tokopedia-scraper .
+```
+
+### 3. Jalankan Container
+
+```bash
+docker run -d \
+  --name scraper \
+  -p 8000:8000 \
+  -p 6080:6080 \
+  --env-file .env \
+  tokopedia-scraper
+```
+
+Atau dengan langsung menyuntikkan environment variable:
+
+```bash
+docker run -d \
+  --name scraper \
+  -p 8000:8000 \
+  -p 6080:6080 \
+  -e MONGODB_URI="mongodb://localhost:27017/" \
+  tokopedia-scraper
+```
+
+### 4. Akses Layanan
+
+| Layanan          | URL                          | Keterangan                                           |
+| ---------------- | ---------------------------- | ---------------------------------------------------- |
+| API Health Check | http://localhost:8000/       | Cek apakah API berjalan                              |
+| API Scrape       | http://localhost:8000/scrape | Endpoint POST untuk scraping                         |
+| noVNC            | http://localhost:6080        | Akses browser virtual untuk melihat aktivitas Chrome |
+
+### 5. Contoh Request API
+
+```bash
+curl -X POST http://localhost:8000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "macbook m1 pro", "method": "shopee", "head_limit": 1}'
+```
+
+Parameter:
+
+- `keyword`: Kata kunci produk yang ingin dicari.
+- `method`: Marketplace target. Pilihan: `tokopedia`, `lazada`, `shopee`.
+- `head_limit`: Jika lebih dari 0, browser akan ditampilkan di noVNC.
+
+### 6. Perintah Docker yang Berguna
+
+```bash
+# Melihat logs container
+docker logs -f scraper
+
+# Menghentikan container
+docker stop scraper
+
+# Menghapus container
+docker rm scraper
+
+# Build ulang tanpa cache
+docker build --no-cache -t tokopedia-scraper .
+
+# Build untuk multi-platform (ARM64 + AMD64)
+docker buildx build --platform linux/amd64,linux/arm64 -t tokopedia-scraper .
+```
+
+### ⚠️ Catatan Penting
+
+- Image Docker ini berukuran besar (~1.5-2GB) karena mengandung browser dan dependencies GUI.
+- Pastikan container memiliki minimal **1GB RAM** agar Chrome/Playwright berjalan stabil.
+- Untuk Mac M1/M2, Dockerfile akan otomatis menggunakan **Chromium** dari repository Debian karena Google Chrome resmi tidak tersedia untuk ARM64.
+- Untuk Linux/Intel, Dockerfile akan menginstall **Google Chrome Stable** resmi.
